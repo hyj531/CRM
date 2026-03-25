@@ -1,0 +1,62 @@
+{% extends "prototype/base.html" %}
+{% block content %}
+<div class="topbar">
+  <h1>审批中心</h1>
+  <div class="actions">
+    <button class="button secondary">待审批</button>
+    <button class="button">新建流程</button>
+  </div>
+</div>
+
+<div class="section grid layout-2">
+  <div class="card">
+    <h2>待审批列表</h2>
+    <div class="list">
+      <div class="list-item">
+        <div><strong>报价 Q-0188</strong><br /><small>区域：华东分公司 | 提交人：王晨</small></div>
+        <div><span class="badge orange">待审批</span></div>
+        <div>¥ 1,200,000</div>
+        <div><button class="button secondary">处理</button></div>
+      </div>
+      <div class="list-item">
+        <div><strong>合同 C-0422</strong><br /><small>区域：华东分公司 | 提交人：李楠</small></div>
+        <div><span class="badge">待审批</span></div>
+        <div>¥ 2,400,000</div>
+        <div><button class="button secondary">处理</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>流程设计预览</h2>
+    <div class="flow">
+      <div class="node">起草人提交</div>
+      <div class="node">区域主管审批</div>
+      <div class="node">财务复核</div>
+      <div class="node">总经理终审</div>
+    </div>
+    <div class="mini-list" style="margin-top:12px;">
+      <div class="mini-item"><span>适用区域</span><span class="badge green">华东分公司</span></div>
+      <div class="mini-item"><span>触发条件</span><span class="badge purple">金额 ≥ 50万</span></div>
+      <div class="mini-item"><span>通知方式</span><span class="badge">钉钉待办</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>流程配置示例</h2>
+  <div class="list">
+    <div class="list-item">
+      <div><strong>报价审批流程</strong><br /><small>区域：总部/华东/华南</small></div>
+      <div><span class="badge green">启用</span></div>
+      <div>4 个节点</div>
+      <div><button class="button secondary">编辑</button></div>
+    </div>
+    <div class="list-item">
+      <div><strong>合同审批流程</strong><br /><small>区域：华东分公司</small></div>
+      <div><span class="badge">启用</span></div>
+      <div>3 个节点</div>
+      <div><button class="button secondary">编辑</button></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

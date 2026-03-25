@@ -1,0 +1,49 @@
+{% extends "prototype/base.html" %}
+{% block content %}
+<div class="topbar">
+  <h1>区域权限与组织</h1>
+  <div class="actions">
+    <button class="button secondary">导入钉钉组织</button>
+    <button class="button">新增区域</button>
+  </div>
+</div>
+
+<div class="section grid layout-2">
+  <div class="card">
+    <h2>组织树</h2>
+    <div class="pipeline">
+      <div class="stage"><span>总部</span><span class="badge green">启用</span></div>
+      <div class="stage"><span>华东分公司</span><span class="badge">启用</span></div>
+      <div class="stage"><span>华南分公司</span><span class="badge">启用</span></div>
+      <div class="stage"><span>西南办事处</span><span class="badge orange">筹备</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>数据范围策略</h2>
+    <div class="mini-list">
+      <div class="mini-item"><span>销售人员</span><span class="badge">仅本人</span></div>
+      <div class="mini-item"><span>销售主管</span><span class="badge green">本区域 + 下级</span></div>
+      <div class="mini-item"><span>区域总监</span><span class="badge purple">本大区</span></div>
+      <div class="mini-item"><span>总部管理员</span><span class="badge">全局</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>人员与角色</h2>
+  <div class="list">
+    <div class="list-item">
+      <div><strong>王晨</strong><br /><small>华东分公司 · 销售主管</small></div>
+      <div><span class="badge green">启用</span></div>
+      <div>数据范围：本区域 + 下级</div>
+      <div><button class="button secondary">编辑</button></div>
+    </div>
+    <div class="list-item">
+      <div><strong>刘颖</strong><br /><small>华东分公司 · 销售代表</small></div>
+      <div><span class="badge">启用</span></div>
+      <div>数据范围：仅本人</div>
+      <div><button class="button secondary">编辑</button></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

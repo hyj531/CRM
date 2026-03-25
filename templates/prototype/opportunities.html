@@ -1,0 +1,67 @@
+{% extends "prototype/base.html" %}
+{% block content %}
+<div class="topbar">
+  <h1>商机看板</h1>
+  <div class="actions">
+    <button class="button secondary">筛选区域</button>
+    <button class="button">新建商机</button>
+  </div>
+</div>
+
+<div class="board">
+  <div class="column">
+    <strong>新建</strong>
+    <div class="ticket">
+      <div>中鼎智造 / MES改造</div>
+      <small>¥ 320,000</small>
+    </div>
+    <div class="ticket">
+      <div>恒信物流 / 运输调度</div>
+      <small>¥ 180,000</small>
+    </div>
+  </div>
+  <div class="column">
+    <strong>评估中</strong>
+    <div class="ticket">
+      <div>华峰新能源 / 储能项目</div>
+      <small>¥ 2,400,000</small>
+    </div>
+    <div class="ticket">
+      <div>盛科材料 / ERP升级</div>
+      <small>¥ 760,000</small>
+    </div>
+  </div>
+  <div class="column">
+    <strong>方案中</strong>
+    <div class="ticket">
+      <div>天启化工 / 数字化改造</div>
+      <small>¥ 920,000</small>
+    </div>
+  </div>
+  <div class="column">
+    <strong>谈判</strong>
+    <div class="ticket">
+      <div>东岳工业 / 产线升级</div>
+      <small>¥ 1,580,000</small>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>商机列表</h2>
+  <div class="list">
+    <div class="list-item">
+      <div><strong>华峰新能源 / 储能项目</strong><br /><small>负责人：王晨 | 预计结项：2026-06-15</small></div>
+      <div><span class="badge green">谈判</span></div>
+      <div>¥ 2,400,000</div>
+      <div><button class="button secondary">查看</button></div>
+    </div>
+    <div class="list-item">
+      <div><strong>盛科材料 / ERP升级</strong><br /><small>负责人：刘颖 | 预计结项：2026-05-10</small></div>
+      <div><span class="badge">方案中</span></div>
+      <div>¥ 760,000</div>
+      <div><button class="button secondary">查看</button></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

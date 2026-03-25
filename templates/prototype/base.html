@@ -1,0 +1,31 @@
+{% load static %}
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>徐师傅 CRM</title>
+  <link rel="stylesheet" href="{% static 'prototype.css' %}" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">徐师傅 CRM</div>
+      <nav class="nav">
+        <a href="/prototype/" class="{{ nav_dashboard|default:'' }}">仪表盘</a>
+        <a href="/prototype/opportunities/" class="{{ nav_opps|default:'' }}">商机看板</a>
+        <a href="/prototype/approvals/" class="{{ nav_approvals|default:'' }}">审批中心</a>
+        <a href="/prototype/regions/" class="{{ nav_regions|default:'' }}">区域权限</a>
+      </nav>
+      <div class="meta">
+        当前区域：华东分公司<br />
+        角色：销售主管<br />
+        数据范围：本区域 + 下级
+      </div>
+    </aside>
+    <main class="main">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

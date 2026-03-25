@@ -1,0 +1,75 @@
+{% extends "prototype/base.html" %}
+{% block content %}
+<div class="topbar">
+  <h1>销售仪表盘</h1>
+  <div class="actions">
+    <button class="button secondary">导出周报</button>
+    <button class="button">新建商机</button>
+  </div>
+</div>
+
+<div class="grid kpis">
+  <div class="card">
+    <h3>本月新增商机</h3>
+    <div class="value">68</div>
+  </div>
+  <div class="card">
+    <h3>在管合同金额</h3>
+    <div class="value">¥ 12,860,000</div>
+  </div>
+  <div class="card">
+    <h3>待审批事项</h3>
+    <div class="value">14</div>
+  </div>
+  <div class="card">
+    <h3>预测回款</h3>
+    <div class="value">¥ 3,200,000</div>
+  </div>
+</div>
+
+<div class="section grid layout-2">
+  <div class="card">
+    <h2>商机漏斗</h2>
+    <div class="pipeline">
+      <div class="stage"><span>新线索</span><strong>120</strong></div>
+      <div class="stage"><span>已评估</span><strong>84</strong></div>
+      <div class="stage"><span>方案中</span><strong>53</strong></div>
+      <div class="stage"><span>谈判</span><strong>21</strong></div>
+      <div class="stage"><span>赢单</span><strong>8</strong></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>审批与提醒</h2>
+    <div class="mini-list">
+      <div class="mini-item"><span>合同 C-0422</span><span class="badge orange">待审批</span></div>
+      <div class="mini-item"><span>报价 Q-0188</span><span class="badge">待审批</span></div>
+      <div class="mini-item"><span>开票 I-0049</span><span class="badge purple">待审批</span></div>
+      <div class="mini-item"><span>周例会</span><span class="badge green">今日 15:00</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>高优先级商机</h2>
+  <div class="list">
+    <div class="list-item">
+      <div><strong>华峰新能源 / 储能项目</strong><br /><small>负责人：王晨</small></div>
+      <div><span class="badge green">谈判</span></div>
+      <div>¥ 2,400,000</div>
+      <div><button class="button secondary">进入</button></div>
+    </div>
+    <div class="list-item">
+      <div><strong>东岳工业 / 产线升级</strong><br /><small>负责人：张莉</small></div>
+      <div><span class="badge">方案中</span></div>
+      <div>¥ 1,580,000</div>
+      <div><button class="button secondary">进入</button></div>
+    </div>
+    <div class="list-item">
+      <div><strong>天启化工 / 数字化改造</strong><br /><small>负责人：李楠</small></div>
+      <div><span class="badge orange">评估</span></div>
+      <div>¥ 920,000</div>
+      <div><button class="button secondary">进入</button></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
