@@ -46,6 +46,15 @@
             <div v-if="usersError" style="font-size: 12px; color: #c92a2a;">{{ usersError }}</div>
           </div>
           <div>
+            <label>所属区域</label>
+            <select v-model.number="opportunity.region">
+              <option :value="null">未设置</option>
+              <option v-for="region in regions" :key="region.id" :value="region.id">
+                {{ region.name || region.code || `ID ${region.id}` }}
+              </option>
+            </select>
+          </div>
+          <div>
             <label>成交概率%</label>
             <input v-model.number="opportunity.win_probability" type="number" min="0" max="100" />
           </div>
@@ -235,6 +244,7 @@ const canAssign = computed(() => Boolean(auth.user?.is_staff || auth.user?.permi
 const users = ref([])
 const usersError = ref('')
 const usersLoading = ref(false)
+const regions = ref([])
 const activities = ref([])
 const attachments = ref([])
 const attachmentForm = ref({
@@ -359,6 +369,11 @@ const fetchUsers = async () => {
   }
 }
 
+const fetchRegions = async () => {
+  const res = await api.get('/regions/', { params: { page: 1, page_size: 1000 } })
+  regions.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
 const fetchActivities = async () => {
   const res = await api.get('/activities/', {
     params: { opportunity: props.id, ordering: '-due_at', page: 1, page_size: 50 }
@@ -476,6 +491,7 @@ const save = async () => {
     latest_followup_at: opportunity.value.latest_followup_at,
     latest_followup_note: opportunity.value.latest_followup_note,
     remark: opportunity.value.remark,
+    region: toNullableInt(opportunity.value.region),
   }
   if (canAssign.value) {
     payload.owner = toNullableInt(opportunity.value.owner)
@@ -488,6 +504,7 @@ onMounted(async () => {
   await fetchLookups()
   await fetchDetail()
   await fetchUsers()
+  await fetchRegions()
   await fetchActivities()
   await fetchAttachments()
 })

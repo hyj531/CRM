@@ -37,6 +37,15 @@
           <div v-if="usersError" style="font-size: 12px; color: #c92a2a;">{{ usersError }}</div>
         </div>
         <div>
+          <label>所属区域</label>
+          <select v-model.number="form.region">
+            <option :value="null">默认所属区域</option>
+            <option v-for="region in regions" :key="region.id" :value="region.id">
+              {{ region.name || region.code || `ID ${region.id}` }}
+            </option>
+          </select>
+        </div>
+        <div>
           <label>成交概率%</label>
           <input v-model.number="form.win_probability" type="number" min="0" max="100" />
         </div>
@@ -48,9 +57,32 @@
           <label>预计成交时间</label>
           <input v-model="form.expected_close_date" type="date" />
         </div>
-        <div style="grid-column: 1 / -1;">
-          <label>备注</label>
-          <textarea v-model="form.remark" rows="3"></textarea>
+        <div>
+          <label>企业性质</label>
+          <select v-model.number="form.enterprise_nature">
+            <option :value="null">未设置</option>
+            <option v-for="opt in lookupOptions.enterprise_nature" :key="opt.id" :value="opt.id">
+              {{ opt.name }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label>商机分类</label>
+          <select v-model.number="form.opportunity_category">
+            <option :value="null">未设置</option>
+            <option v-for="opt in lookupOptions.opportunity_category" :key="opt.id" :value="opt.id">
+              {{ opt.name }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label>线索来源</label>
+          <select v-model.number="form.lead_source">
+            <option :value="null">未设置</option>
+            <option v-for="opt in lookupOptions.lead_source" :key="opt.id" :value="opt.id">
+              {{ opt.name }}
+            </option>
+          </select>
         </div>
         <div>
           <label>客户</label>
@@ -106,38 +138,9 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="section-title">分类与来源</div>
-      <div class="form-grid">
-        <div>
-          <label>企业性质</label>
-          <select v-model.number="form.enterprise_nature">
-            <option :value="null">未设置</option>
-            <option v-for="opt in lookupOptions.enterprise_nature" :key="opt.id" :value="opt.id">
-              {{ opt.name }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label>商机分类</label>
-          <select v-model.number="form.opportunity_category">
-            <option :value="null">未设置</option>
-            <option v-for="opt in lookupOptions.opportunity_category" :key="opt.id" :value="opt.id">
-              {{ opt.name }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label>线索来源</label>
-          <select v-model.number="form.lead_source">
-            <option :value="null">未设置</option>
-            <option v-for="opt in lookupOptions.lead_source" :key="opt.id" :value="opt.id">
-              {{ opt.name }}
-            </option>
-          </select>
+        <div style="grid-column: 1 / -1;">
+          <label>备注</label>
+          <textarea v-model="form.remark" rows="3"></textarea>
         </div>
       </div>
     </div>
@@ -157,6 +160,7 @@ const auth = useAuthStore()
 const canAssign = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.opportunity?.update))
 const users = ref([])
 const usersError = ref('')
+const regions = ref([])
 const accountOptions = ref([])
 const accountQuery = ref('')
 const accountLoading = ref(false)
@@ -177,6 +181,7 @@ const form = ref({
   expected_close_date: '',
   remark: '',
   account: null,
+  region: null,
   enterprise_nature: null,
   opportunity_category: null,
   lead_source: null,
@@ -244,6 +249,11 @@ const fetchUsers = async () => {
   }
 }
 
+const fetchRegions = async () => {
+  const res = await api.get('/regions/', { params: { page: 1, page_size: 1000 } })
+  regions.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
 const triggerSearch = () => {
   const query = accountQuery.value.trim()
   if (!query) {
@@ -266,11 +276,13 @@ const searchHint = computed(() => {
 const selectAccount = (acc) => {
   form.value.account = acc.id
   selectedAccount.value = acc
+  accountQuery.value = acc.full_name || acc.short_name || ''
 }
 
 const clearAccount = () => {
   form.value.account = null
   selectedAccount.value = null
+  accountQuery.value = ''
 }
 
 const selectedAccountLabel = computed(() => {
@@ -328,6 +340,7 @@ const normalizePayload = () => ({
   expected_close_date: form.value.expected_close_date || null,
   remark: form.value.remark || '',
   account: form.value.account ? Number(form.value.account) : null,
+  region: form.value.region ? Number(form.value.region) : null,
   enterprise_nature: form.value.enterprise_nature ? Number(form.value.enterprise_nature) : null,
   opportunity_category: form.value.opportunity_category ? Number(form.value.opportunity_category) : null,
   lead_source: form.value.lead_source ? Number(form.value.lead_source) : null
@@ -370,7 +383,14 @@ const cancel = () => {
 onMounted(async () => {
   await fetchLookups()
   await fetchUsers()
+  await fetchRegions()
   await loadAccounts('')
+  if (auth.user?.id && !form.value.owner) {
+    form.value.owner = Number(auth.user.id)
+  }
+  if (auth.user?.region && !form.value.region) {
+    form.value.region = Number(auth.user.region)
+  }
 })
 
 watch(accountQuery, (value) => {
