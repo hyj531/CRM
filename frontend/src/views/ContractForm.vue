@@ -1,9 +1,20 @@
 <template>
-  <div>
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">{{ isEdit ? '编辑合同' : '新建合同' }}</h2>
-        <div class="page-subtitle">保存后可在合同列表查看</div>
+  <div class="opportunity-detail contract-detail">
+    <div class="detail-header">
+      <div class="detail-title-wrap">
+        <button class="back-button" type="button" @click="goBack" aria-label="返回">←</button>
+        <div>
+          <div class="detail-title">{{ headerTitle }}</div>
+          <div class="detail-meta">
+            <span>状态：{{ statusLabel(form.status) }}</span>
+            <span>审批：{{ approvalLabel(form.approval_status) }}</span>
+            <span>甲方：{{ selectedAccountLabel || '-' }}</span>
+            <span>金额：{{ formatMoney(form.amount) }}</span>
+            <span>当前产值：{{ formatMoney(form.current_output) }}</span>
+            <span>应收款：{{ receivableAmount || '-' }}</span>
+            <span>签署日期：{{ form.signed_at || '-' }}</span>
+          </div>
+        </div>
       </div>
       <div class="page-actions">
         <button class="button" :disabled="saving" @click="save">
@@ -344,6 +355,34 @@ const form = ref({
 })
 
 const isEdit = computed(() => Boolean(route.params.id))
+const headerTitle = computed(() => {
+  if (!isEdit.value) return '新建合同'
+  return form.value.name || form.value.contract_no || '合同详情'
+})
+
+const statusLabel = (value) => {
+  const map = {
+    draft: '草稿',
+    signed: '已签署',
+    active: '履行中',
+    closed: '已关闭'
+  }
+  return map[value] || value || '-'
+}
+
+const approvalLabel = (value) => {
+  const map = {
+    pending: '待审批',
+    approved: '已通过',
+    rejected: '已驳回'
+  }
+  return map[value] || value || '-'
+}
+
+const formatMoney = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num.toFixed(2) : '-'
+}
 
 const fetchLookups = async () => {
   const res = await api.get('/lookups/')
@@ -731,6 +770,10 @@ const cancel = () => {
   router.push('/contracts')
 }
 
+const goBack = () => {
+  router.back()
+}
+
 onMounted(async () => {
   await fetchLookups()
   await fetchOpportunities()
@@ -764,6 +807,12 @@ watch(accountQuery, (value) => {
   }, 300)
 })
 </script>
+
+<style scoped>
+.contract-detail {
+  font-size: 13px;
+}
+</style>
 const receivableAmount = computed(() => {
   const base = form.value.current_output != null ? Number(form.value.current_output) : Number(form.value.amount)
   if (Number.isNaN(base)) return ''

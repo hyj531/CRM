@@ -38,29 +38,26 @@
         <div class="form-grid">
           <div>
             <label>关联合同</label>
-            <select v-model.number="form.contract">
-              <option :value="null">请选择合同</option>
-              <option v-for="ct in contracts" :key="ct.id" :value="ct.id">
-                {{ contractLabel(ct) }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label>关联开票</label>
-            <select v-model.number="form.invoice">
-              <option :value="null">未关联</option>
-              <option v-for="inv in invoices" :key="inv.id" :value="inv.id">
-                {{ invoiceLabel(inv) }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label>回款期次</label>
-            <input v-model.number="form.period_no" type="number" />
-          </div>
-          <div>
-            <label>应收金额</label>
-            <input v-model.number="form.receivable_amount" type="number" />
+            <div class="filter-autocomplete">
+              <input
+                v-model="contractSearch"
+                placeholder="输入合同/甲方关键词进行搜索"
+                @focus="showContractDropdown = true"
+                @input="showContractDropdown = true"
+                @blur="hideContractDropdown"
+              />
+              <div v-if="showContractDropdown && contractSearch" class="filter-suggestions">
+                <div
+                  v-for="ct in filteredContracts"
+                  :key="ct.id"
+                  class="filter-suggestion"
+                  @mousedown.prevent="selectContract(ct)"
+                >
+                  {{ contractLabel(ct) }}
+                </div>
+                <div v-if="!filteredContracts.length" class="filter-empty">无匹配合同</div>
+              </div>
+            </div>
           </div>
           <div>
             <label>回款金额</label>
@@ -123,10 +120,9 @@
           <table class="table">
             <thead>
               <tr>
-                <th>合同</th>
-                <th>开票</th>
-                <th>期次</th>
-                <th>应收</th>
+                <th>合同名称</th>
+                <th>合同金额</th>
+                <th>合同甲方</th>
                 <th>实收</th>
               <th>状态</th>
               <th>回款日期</th>
@@ -138,10 +134,9 @@
           </thead>
           <tbody>
               <tr v-for="item in pagedPayments" :key="item.id">
-                <td>{{ contractName(item.contract) }}</td>
-                <td>{{ invoiceName(item.invoice) }}</td>
-                <td>{{ item.period_no || '-' }}</td>
-                <td>{{ item.receivable_amount || '-' }}</td>
+                <td>{{ contractDisplayName(item.contract) }}</td>
+                <td>{{ contractAmount(item.contract) }}</td>
+                <td>{{ contractAccountName(item.contract) }}</td>
                 <td>{{ item.amount }}</td>
                 <td>{{ statusLabel(item.status) }}</td>
               <td>{{ item.paid_at || '-' }}</td>
@@ -154,7 +149,7 @@
               </td>
             </tr>
               <tr v-if="!pagedPayments.length">
-                <td colspan="11" style="color: #888;">暂无数据</td>
+                <td colspan="10" style="color: #888;">暂无数据</td>
               </tr>
             </tbody>
           </table>
@@ -177,7 +172,9 @@ import api from '../api'
 const payments = ref([])
 const total = ref(0)
 const contracts = ref([])
-const invoices = ref([])
+const accounts = ref([])
+const contractSearch = ref('')
+const showContractDropdown = ref(false)
 const error = ref('')
 const success = ref('')
 const saving = ref(false)
@@ -202,9 +199,6 @@ const statusLabel = (value) => {
 
 const form = ref({
   contract: null,
-  invoice: null,
-  period_no: null,
-  receivable_amount: null,
   amount: null,
   status: 'planned',
   paid_at: '',
@@ -224,35 +218,72 @@ const pagedPayments = computed(() => payments.value)
 const resetForm = () => {
   form.value = {
     contract: null,
-    invoice: null,
-    period_no: null,
-    receivable_amount: null,
     amount: null,
     status: 'planned',
     paid_at: '',
     reference: ''
   }
+  contractSearch.value = ''
 }
 
 const contractLabel = (contract) => {
   if (!contract) return ''
-  return contract.contract_no || contract.name || `合同${contract.id}`
+  const name = contract.name || contract.contract_no || `合同${contract.id}`
+  const accountId = contract.account
+  const acc = accounts.value.find((item) => item.id === accountId)
+  const accountName = acc ? (acc.full_name || acc.short_name || `甲方${acc.id}`) : (accountId ? `甲方${accountId}` : '')
+  return accountName ? `${name}（${accountName}）` : name
 }
 
-const invoiceLabel = (invoice) => {
-  if (!invoice) return ''
-  return invoice.invoice_no || `开票${invoice.id}`
+const filteredContracts = computed(() => {
+  const keyword = contractSearch.value.trim().toLowerCase()
+  if (!keyword) return contracts.value
+  return contracts.value.filter((ct) => {
+    const name = (ct.name || ct.contract_no || '').toLowerCase()
+    const accountId = ct.account
+    const acc = accounts.value.find((item) => item.id === accountId)
+    const accountName = acc ? `${acc.full_name || ''} ${acc.short_name || ''}`.toLowerCase() : ''
+    return name.includes(keyword) || accountName.includes(keyword)
+  })
+})
+
+const selectContract = (ct) => {
+  form.value.contract = ct.id
+  contractSearch.value = contractLabel(ct)
+  showContractDropdown.value = false
 }
 
-const contractName = (contractId) => {
+const hideContractDropdown = () => {
+  setTimeout(() => {
+    showContractDropdown.value = false
+  }, 120)
+}
+
+
+const formatMoney = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num.toFixed(2) : '-'
+}
+
+const contractDisplayName = (contractId) => {
   const ct = contracts.value.find((item) => item.id === contractId)
-  return ct ? contractLabel(ct) : (contractId || '-')
+  if (!ct) return contractId || '-'
+  return ct.name || ct.contract_no || `合同${ct.id}`
 }
 
-const invoiceName = (invoiceId) => {
-  const inv = invoices.value.find((item) => item.id === invoiceId)
-  return inv ? invoiceLabel(inv) : (invoiceId || '-')
+const contractAmount = (contractId) => {
+  const ct = contracts.value.find((item) => item.id === contractId)
+  return ct ? formatMoney(ct.amount) : '-'
 }
+
+const contractAccountName = (contractId) => {
+  const ct = contracts.value.find((item) => item.id === contractId)
+  if (!ct) return '-'
+  const accountId = ct.account
+  const acc = accounts.value.find((item) => item.id === accountId)
+  return acc ? (acc.full_name || acc.short_name || `甲方${acc.id}`) : (accountId ? `甲方${accountId}` : '-')
+}
+
 
 const buildParams = () => {
   const params = {
@@ -281,9 +312,9 @@ const fetchContracts = async () => {
   contracts.value = Array.isArray(res.data.results) ? res.data.results : res.data
 }
 
-const fetchInvoices = async () => {
-  const res = await api.get('/invoices/', { params: { page: 1, page_size: 1000 } })
-  invoices.value = Array.isArray(res.data.results) ? res.data.results : res.data
+const fetchAccounts = async () => {
+  const res = await api.get('/accounts/', { params: { page: 1, page_size: 1000 } })
+  accounts.value = Array.isArray(res.data.results) ? res.data.results : res.data
 }
 
 const savePayment = async () => {
@@ -302,9 +333,6 @@ const savePayment = async () => {
     const payload = {
       ...form.value,
       contract: Number(form.value.contract),
-      invoice: form.value.invoice ? Number(form.value.invoice) : null,
-      period_no: form.value.period_no === '' ? null : form.value.period_no,
-      receivable_amount: form.value.receivable_amount === '' ? null : form.value.receivable_amount,
       amount: Number(form.value.amount),
       paid_at: form.value.paid_at || null
     }
@@ -339,14 +367,13 @@ const startEdit = (item) => {
   success.value = ''
   form.value = {
     contract: item.contract != null ? Number(item.contract) : null,
-    invoice: item.invoice != null ? Number(item.invoice) : null,
-    period_no: item.period_no != null ? Number(item.period_no) : null,
-    receivable_amount: item.receivable_amount != null ? Number(item.receivable_amount) : null,
     amount: item.amount != null ? Number(item.amount) : null,
     status: item.status || 'planned',
     paid_at: item.paid_at || '',
     reference: item.reference || ''
   }
+  const ct = contracts.value.find((c) => c.id === item.contract)
+  contractSearch.value = ct ? contractLabel(ct) : ''
 }
 
 const cancelEdit = () => {
@@ -406,12 +433,52 @@ const deletePayment = async (id) => {
 }
 
 onMounted(async () => {
+  await fetchAccounts()
   await fetchContracts()
-  await fetchInvoices()
   await fetchData()
 })
 
 watch([statusFilter, ordering], () => {
   applyFilters()
 })
+
+watch(contractSearch, (val) => {
+  if (!val) {
+    form.value.contract = null
+  }
+})
 </script>
+
+<style scoped>
+.filter-autocomplete {
+  position: relative;
+}
+
+.filter-suggestions {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  max-height: 220px;
+  overflow: auto;
+  z-index: 20;
+}
+
+.filter-suggestion {
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.filter-suggestion:hover {
+  background: #f1f5f9;
+}
+
+.filter-empty {
+  padding: 8px 10px;
+  color: #94a3b8;
+}
+</style>

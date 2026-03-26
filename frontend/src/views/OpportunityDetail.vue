@@ -243,11 +243,17 @@ const attachmentForm = ref({
 })
 const uploading = ref(false)
 const uploadError = ref('')
+const toLocalDateTime = () => {
+  const now = new Date()
+  const offset = now.getTimezoneOffset() * 60000
+  return new Date(now.getTime() - offset).toISOString().slice(0, 16)
+}
+
 const followupForm = ref({
-  activity_type: 'call',
+  activity_type: 'internal',
   subject: '',
   description: '',
-  due_at: ''
+  due_at: toLocalDateTime()
 })
 const followupSaving = ref(false)
 const followupError = ref('')
@@ -276,7 +282,8 @@ const followupTypes = [
   { value: 'call', label: '电话' },
   { value: 'meeting', label: '会议' },
   { value: 'email', label: '邮件' },
-  { value: 'visit', label: '拜访' }
+  { value: 'visit', label: '拜访' },
+  { value: 'internal', label: '内部穿透' }
 ]
 
 const stageLabel = (stage) => {
@@ -418,7 +425,7 @@ const createFollowup = async () => {
       due_at: followupForm.value.due_at || null
     }
     await api.post('/activities/', payload)
-    followupForm.value = { activity_type: 'call', subject: '', description: '', due_at: '' }
+    followupForm.value = { activity_type: 'internal', subject: '', description: '', due_at: toLocalDateTime() }
     followupSuccess.value = '跟进已保存'
     await fetchActivities()
   } catch (err) {

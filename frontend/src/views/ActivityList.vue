@@ -157,19 +157,26 @@ const search = ref('')
 const currentPage = ref(1)
 const pageSize = 10
 const ordering = ref('-due_at')
+const toLocalDateTime = () => {
+  const now = new Date()
+  const offset = now.getTimezoneOffset() * 60000
+  return new Date(now.getTime() - offset).toISOString().slice(0, 16)
+}
+
 const form = ref({
-  activity_type: 'call',
+  activity_type: 'internal',
   subject: '',
   description: '',
   opportunity: null,
-  due_at: ''
+  due_at: toLocalDateTime()
 })
 
 const types = [
   { value: 'call', label: '电话' },
   { value: 'meeting', label: '会议' },
   { value: 'email', label: '邮件' },
-  { value: 'visit', label: '拜访' }
+  { value: 'visit', label: '拜访' },
+  { value: 'internal', label: '内部穿透' }
 ]
 
 const buildParams = () => {
@@ -221,7 +228,7 @@ const createActivity = async () => {
       due_at: form.value.due_at || null
     }
     await api.post('/activities/', payload)
-    form.value = { activity_type: 'call', subject: '', description: '', opportunity: null, due_at: '' }
+    form.value = { activity_type: 'internal', subject: '', description: '', opportunity: null, due_at: toLocalDateTime() }
     success.value = '跟进已保存'
     await fetchData()
   } catch (err) {

@@ -328,9 +328,10 @@ class Activity(OwnedRegionModel):
         ('meeting', '会议'),
         ('email', '邮件'),
         ('visit', '拜访'),
+        ('internal', '内部穿透'),
     ]
 
-    activity_type = models.CharField('跟进方式', max_length=20, choices=TYPES, default='call')
+    activity_type = models.CharField('跟进方式', max_length=20, choices=TYPES, default='internal')
     subject = models.CharField('跟进主题', max_length=200)
     description = models.TextField('跟进内容', blank=True)
     lead = models.ForeignKey(
