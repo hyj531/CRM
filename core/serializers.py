@@ -220,6 +220,8 @@ class QuoteSerializer(serializers.ModelSerializer):
 class ContractSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source='owner.username', read_only=True)
     region_name = serializers.CharField(source='region.name', read_only=True)
+    paid_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    receivable_amount = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.Contract
@@ -228,6 +230,43 @@ class ContractSerializer(serializers.ModelSerializer):
             'owner': {'required': False},
             'region': {'required': False},
         }
+
+    def validate(self, attrs):
+        vendor = attrs.get('vendor_company')
+        if vendor and vendor.category.code != 'vendor_company':
+            raise serializers.ValidationError({'vendor_company': 'Invalid lookup category: vendor_company'})
+        return attrs
+
+    def get_receivable_amount(self, obj):
+        paid_total = getattr(obj, 'paid_total', None)
+        if paid_total is None:
+            paid_total = obj.payments.aggregate(total=models.Sum('amount')).get('total') or 0
+        base = obj.current_output if obj.current_output is not None else obj.amount
+        if base is None:
+            return None
+        return base - paid_total
+
+
+class ContractAttachmentSerializer(serializers.ModelSerializer):
+    owner_name = serializers.CharField(source='owner.username', read_only=True)
+    file_url = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = models.ContractAttachment
+        fields = '__all__'
+        extra_kwargs = {
+            'owner': {'required': False},
+            'region': {'required': False},
+            'original_name': {'required': False},
+        }
+
+    def get_file_url(self, obj):
+        if not obj.file:
+            return ''
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url
 
 
 class InvoiceSerializer(serializers.ModelSerializer):

@@ -26,7 +26,10 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+]
+if not DEBUG:
+    MIDDLEWARE.append('whitenoise.middleware.WhiteNoiseMiddleware')
+MIDDLEWARE += [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -56,16 +59,24 @@ TEMPLATES = [
 WSGI_APPLICATION = 'crm.wsgi.application'
 ASGI_APPLICATION = 'crm.asgi.application'
 
-POSTGRES_DB = os.getenv('POSTGRES_DB', 'crm')
-POSTGRES_USER = os.getenv('POSTGRES_USER', 'crm')
-POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', '')
-POSTGRES_HOST = os.getenv('POSTGRES_HOST', '127.0.0.1')
-POSTGRES_PORT = os.getenv('POSTGRES_PORT', '5432')
+DATABASE_URL = os.getenv('DATABASE_URL')
 
-DEFAULT_DATABASE_URL = os.getenv(
-    'DATABASE_URL',
-    f"postgres://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}",
-)
+POSTGRES_DB = os.getenv('POSTGRES_DB')
+POSTGRES_USER = os.getenv('POSTGRES_USER')
+POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD')
+POSTGRES_HOST = os.getenv('POSTGRES_HOST')
+POSTGRES_PORT = os.getenv('POSTGRES_PORT')
+
+if DATABASE_URL:
+    DEFAULT_DATABASE_URL = DATABASE_URL
+elif any([POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT]):
+    DEFAULT_DATABASE_URL = (
+        f"postgres://{POSTGRES_USER or 'crm'}:{POSTGRES_PASSWORD or ''}"
+        f"@{POSTGRES_HOST or '127.0.0.1'}:{POSTGRES_PORT or '5432'}"
+        f"/{POSTGRES_DB or 'crm'}"
+    )
+else:
+    DEFAULT_DATABASE_URL = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
 
 DATABASES = {
     'default': dj_database_url.config(
@@ -96,7 +107,8 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+if not DEBUG:
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -131,6 +143,7 @@ REST_FRAMEWORK = {
 DINGTALK = {
     'CLIENT_ID': os.getenv('DINGTALK_CLIENT_ID', ''),
     'CLIENT_SECRET': os.getenv('DINGTALK_CLIENT_SECRET', ''),
+    'CORP_ID': os.getenv('DINGTALK_CORP_ID', ''),
     'TOKEN_URL': os.getenv('DINGTALK_TOKEN_URL', ''),
     'USERINFO_URL': os.getenv('DINGTALK_USERINFO_URL', ''),
     'ACCESS_TOKEN': os.getenv('DINGTALK_ACCESS_TOKEN', ''),

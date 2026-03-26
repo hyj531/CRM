@@ -7,6 +7,7 @@ import OpportunityCreate from '../views/OpportunityCreate.vue'
 import AccountList from '../views/AccountList.vue'
 import ContactList from '../views/ContactList.vue'
 import ContractList from '../views/ContractList.vue'
+import ContractForm from '../views/ContractForm.vue'
 import InvoiceList from '../views/InvoiceList.vue'
 import PaymentList from '../views/PaymentList.vue'
 import ActivityList from '../views/ActivityList.vue'
@@ -21,6 +22,8 @@ const routes = [
   { path: '/accounts', name: 'accounts', component: AccountList },
   { path: '/contacts', name: 'contacts', component: ContactList },
   { path: '/contracts', name: 'contracts', component: ContractList },
+  { path: '/contracts/new', name: 'contract-create', component: ContractForm },
+  { path: '/contracts/:id', name: 'contract-detail', component: ContractForm, props: true },
   { path: '/invoices', name: 'invoices', component: InvoiceList },
   { path: '/payments', name: 'payments', component: PaymentList },
   { path: '/activities', name: 'activities', component: ActivityList },

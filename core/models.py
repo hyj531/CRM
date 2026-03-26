@@ -423,10 +423,15 @@ class Contract(OwnedRegionModel):
     contract_no = models.CharField('合同编号', max_length=100, blank=True)
     name = models.CharField('合同名称', max_length=200, blank=True)
     account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='contracts', verbose_name='客户')
+    vendor_company = models.ForeignKey(
+        LookupOption, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='contract_vendor_companies', verbose_name='乙方公司'
+    )
     opportunity = models.ForeignKey(
         Opportunity, null=True, blank=True, on_delete=models.SET_NULL, related_name='contracts', verbose_name='商机'
     )
     amount = models.DecimalField('合同金额', max_digits=12, decimal_places=2)
+    current_output = models.DecimalField('当前产值', max_digits=12, decimal_places=2, null=True, blank=True)
     final_settlement_amount = models.DecimalField('最终结算金额', max_digits=12, decimal_places=2, null=True, blank=True)
     status = models.CharField('合同状态', max_length=20, choices=STATUSES, default='draft')
     approval_status = models.CharField('审批状态', max_length=20, choices=APPROVAL_STATUSES, default='pending')
@@ -440,6 +445,22 @@ class Contract(OwnedRegionModel):
 
     def __str__(self):
         return f"Contract {self.id}"
+
+
+class ContractAttachment(OwnedRegionModel):
+    contract = models.ForeignKey(
+        Contract, on_delete=models.PROTECT, related_name='attachments', verbose_name='合同'
+    )
+    file = models.FileField('附件文件', upload_to='contract_attachments/%Y/%m/')
+    original_name = models.CharField('原始文件名', max_length=255, blank=True)
+    description = models.CharField('附件备注', max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = '合同附件'
+        verbose_name_plural = '合同附件'
+
+    def __str__(self):
+        return self.original_name or self.file.name
 
 
 class Invoice(OwnedRegionModel):

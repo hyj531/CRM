@@ -373,21 +373,126 @@ class ContractViewSet(RegionScopedViewSet):
     queryset = models.Contract.objects.all()
     serializer_class = serializers.ContractSerializer
     module_code = models.RolePermission.MODULE_CONTRACT
-    filterset_fields = ['status', 'approval_status', 'account', 'opportunity', 'owner', 'region']
+    filterset_fields = ['status', 'approval_status', 'account', 'opportunity', 'vendor_company', 'owner', 'region']
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        start = self.request.query_params.get('signed_at_start')
+        end = self.request.query_params.get('signed_at_end')
+        if start:
+            queryset = queryset.filter(signed_at__gte=start)
+        if end:
+            queryset = queryset.filter(signed_at__lte=end)
+        return queryset
+
+    def get_queryset(self):
+        from django.db.models import DecimalField, Sum, Value
+        from django.db.models import OuterRef, Subquery
+        from django.db.models.functions import Coalesce
+
+        queryset = super().get_queryset()
+        paid_subquery = models.Payment.objects.filter(contract_id=OuterRef('pk')) \
+            .values('contract_id') \
+            .annotate(total=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )) \
+            .values('total')[:1]
+
+        return queryset.annotate(
+            paid_total=Coalesce(
+                Subquery(paid_subquery, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        )
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        from decimal import Decimal
+        from django.db.models import DecimalField, Sum, Value
+        from django.db.models.functions import Coalesce
+
+        queryset = self.filter_queryset(self.get_queryset())
+
+        totals = queryset.aggregate(
+            contract_total=Coalesce(Sum('amount'), Value(0), output_field=DecimalField(max_digits=12, decimal_places=2)),
+        )
+
+        paid_totals = {
+            item['contract_id']: item['total']
+            for item in models.Payment.objects.filter(contract_id__in=queryset.values('id'))
+            .values('contract_id')
+            .annotate(total=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            ))
+        }
+
+        paid_total_sum = sum(paid_totals.values(), Decimal('0'))
+        receivable_total = Decimal('0')
+        for item in queryset.values('id', 'amount', 'current_output'):
+            base = item['current_output'] if item['current_output'] is not None else item['amount']
+            if base is None:
+                continue
+            receivable_total += base - (paid_totals.get(item['id']) or Decimal('0'))
+
+        return Response({
+            'contract_total': totals.get('contract_total') or 0,
+            'paid_total': paid_total_sum,
+            'receivable_total': receivable_total
+        })
 
     def destroy(self, request, *args, **kwargs):
         from django.db.models.deletion import ProtectedError
 
+        contract = self.get_object()
+        # 先清理回款与附件，避免因外键保护导致无法删除合同
+        contract.payments.all().delete()
+        contract.attachments.all().delete()
         try:
             return super().destroy(request, *args, **kwargs)
         except ProtectedError:
-            return Response({'detail': '该合同已有关联开票或回款，无法删除。'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': '该合同已关联合同开票，无法删除。'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def submit_approval(self, request, pk=None):
         contract = self.get_object()
         instance = approval.start_approval(contract, request.user)
         return Response(serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
+
+
+class ContractAttachmentViewSet(RegionScopedViewSet):
+    queryset = models.ContractAttachment.objects.all()
+    serializer_class = serializers.ContractAttachmentSerializer
+    module_code = models.RolePermission.MODULE_CONTRACT
+    filterset_fields = ['contract', 'owner', 'region']
+    search_fields = ['original_name', 'description']
+    parser_classes = [MultiPartParser, FormParser]
+
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+
+        kwargs = {}
+        if 'owner' in serializer.fields and 'owner' not in serializer.validated_data:
+            kwargs['owner'] = self.request.user
+
+        region = self.request.user.region
+        if 'region' in serializer.fields and 'region' not in serializer.validated_data:
+            if region is None:
+                contract = serializer.validated_data.get('contract')
+                if contract and contract.region_id:
+                    region = contract.region
+            if region is None:
+                raise ValidationError({'region': '请先为当前用户设置所属区域，或选择已归属区域的合同。'})
+            kwargs['region'] = region
+
+        attachment = serializer.save(**kwargs)
+        if not attachment.original_name and attachment.file:
+            attachment.original_name = attachment.file.name.split('/')[-1]
+            attachment.save(update_fields=['original_name'])
 
 
 class InvoiceViewSet(RegionScopedViewSet):

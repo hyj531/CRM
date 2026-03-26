@@ -5,11 +5,16 @@
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.dev.txt
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
 ```
+
+### 依赖说明
+
+- 本地开发（sqlite）：`requirements.dev.txt`
+- 生产部署（Docker/Postgres）：`requirements.txt`
 
 ## 环境变量
 
