@@ -13,7 +13,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 
 from core import models, serializers
-from core.services import approval, scoping, dingtalk_client
+from core.services import approval, scoping, dingtalk_client, dingtalk_sync
 
 User = get_user_model()
 
@@ -97,6 +97,19 @@ class DeleteRequiresStaffPermission(permissions.BasePermission):
             perm = models.RolePermission.objects.filter(role=role, module=module).first()
             return bool(perm and perm.can_delete)
         return request.user and request.user.is_authenticated
+
+
+class DingTalkSyncView(APIView):
+    permission_classes = [AdminManagePermission]
+
+    def post(self, request):
+        serializer = serializers.DingTalkSyncRequestSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        summary = dingtalk_sync.sync_departments_and_users(
+            departments=serializer.validated_data.get('departments'),
+            users_payload=serializer.validated_data.get('users'),
+        )
+        return Response(serializers.DingTalkSyncResultSerializer(summary).data)
 
 
 class RegionScopedViewSet(viewsets.ModelViewSet):

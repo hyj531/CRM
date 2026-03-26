@@ -39,6 +39,7 @@ urlpatterns = [
     path('api/auth/jwt/', views.TokenView.as_view(), name='token_obtain_pair'),
     path('api/auth/jwt/refresh/', views.TokenRefreshView.as_view(), name='token_refresh'),
     path('api/auth/dingtalk/', views.DingTalkSSOView.as_view(), name='dingtalk_sso'),
+    path('api/dingtalk/sync/', views.DingTalkSyncView.as_view(), name='dingtalk_sync'),
     path('app/', TemplateView.as_view(template_name='spa/index.html')),
     re_path(r'^app/.*$', TemplateView.as_view(template_name='spa/index.html')),
     path('prototype/', TemplateView.as_view(template_name='prototype/dashboard.html', extra_context={'nav_dashboard': 'active'})),

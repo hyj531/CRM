@@ -26,6 +26,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -55,9 +56,20 @@ TEMPLATES = [
 WSGI_APPLICATION = 'crm.wsgi.application'
 ASGI_APPLICATION = 'crm.asgi.application'
 
+POSTGRES_DB = os.getenv('POSTGRES_DB', 'crm')
+POSTGRES_USER = os.getenv('POSTGRES_USER', 'crm')
+POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', '')
+POSTGRES_HOST = os.getenv('POSTGRES_HOST', '127.0.0.1')
+POSTGRES_PORT = os.getenv('POSTGRES_PORT', '5432')
+
+DEFAULT_DATABASE_URL = os.getenv(
+    'DATABASE_URL',
+    f"postgres://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}",
+)
+
 DATABASES = {
     'default': dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        default=DEFAULT_DATABASE_URL,
         conn_max_age=600,
     )
 }
@@ -84,6 +96,7 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

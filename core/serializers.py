@@ -278,3 +278,18 @@ class ApprovalTaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.ApprovalTask
         fields = '__all__'
+
+
+class DingTalkSyncRequestSerializer(serializers.Serializer):
+    departments = serializers.ListField(child=serializers.DictField(), required=False)
+    users = serializers.ListField(child=serializers.DictField(), required=False)
+
+
+class DingTalkSyncResultSerializer(serializers.Serializer):
+    departments_total = serializers.IntegerField()
+    departments_created = serializers.IntegerField()
+    departments_updated = serializers.IntegerField()
+    departments_parent_updated = serializers.IntegerField()
+    users_total = serializers.IntegerField()
+    users_created = serializers.IntegerField()
+    users_updated = serializers.IntegerField()
