@@ -1,8 +1,11 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from django.shortcuts import redirect
+from django.urls import path
 
 from core import models
+from core.services import dingtalk_sync
 
 
 @admin.register(models.Opportunity)
@@ -41,6 +44,37 @@ class UserAdmin(DjangoUserAdmin):
             'fields': ('username', 'password1', 'password2', 'email', 'phone', 'region', 'role', 'is_staff', 'is_active'),
         }),
     )
+    change_list_template = 'admin/core/user/change_list.html'
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path('sync-dingtalk/', self.admin_site.admin_view(self.sync_dingtalk), name='core_user_sync_dingtalk'),
+        ]
+        return custom + urls
+
+    def sync_dingtalk(self, request):
+        if not request.user.is_staff:
+            self.message_user(request, '无权限执行钉钉同步。', level=messages.ERROR)
+            return redirect('..')
+        summary = dingtalk_sync.sync_departments_and_users()
+        self.message_user(
+            request,
+            (
+                '钉钉同步完成。部门：总数={total}，新增={created}，更新={updated}，父级更新={parent_updated}；'
+                '用户：总数={u_total}，新增={u_created}，更新={u_updated}'
+            ).format(
+                total=summary['departments_total'],
+                created=summary['departments_created'],
+                updated=summary['departments_updated'],
+                parent_updated=summary['departments_parent_updated'],
+                u_total=summary['users_total'],
+                u_created=summary['users_created'],
+                u_updated=summary['users_updated'],
+            ),
+            level=messages.SUCCESS,
+        )
+        return redirect('..')
 
 
 admin.site.register(models.Region)
