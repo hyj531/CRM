@@ -148,6 +148,7 @@ DINGTALK = {
     'USERINFO_URL': os.getenv('DINGTALK_USERINFO_URL', ''),
     'ACCESS_TOKEN': os.getenv('DINGTALK_ACCESS_TOKEN', ''),
     'DEPT_LIST_URL': os.getenv('DINGTALK_DEPT_LIST_URL', ''),
+    'DEPT_DETAIL_URL': os.getenv('DINGTALK_DEPT_DETAIL_URL', ''),
     'USER_LIST_URL': os.getenv('DINGTALK_USER_LIST_URL', ''),
     'WEBHOOK': os.getenv('DINGTALK_WEBHOOK', ''),
     'MOCK_USER_ID': os.getenv('DINGTALK_MOCK_USER_ID', ''),

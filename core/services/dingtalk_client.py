@@ -100,11 +100,58 @@ def _get_app_access_token_for_url(url):
     if cached:
         return cached
 
+    token, _ = refresh_app_access_token(kind=kind)
+    return token
+
+
+def _oapi_post(url, access_token, payload):
+    return requests.post(
+        url,
+        params={'access_token': access_token},
+        json=payload,
+        timeout=10,
+    )
+
+
+def _fetch_oapi_department_ids(dept_url, access_token, root_dept_id=1, fetch_child=True):
+    payload = {'dept_id': root_dept_id}
+    if fetch_child:
+        payload['fetch_child'] = True
+    response = _oapi_post(dept_url, access_token, payload)
+    response.raise_for_status()
+    data = response.json()
+    result = data.get('result') or {}
+    dept_ids = result.get('dept_id_list') or data.get('dept_id_list') or []
+    if str(root_dept_id) not in {str(item) for item in dept_ids}:
+        dept_ids = [root_dept_id] + list(dept_ids)
+    return dept_ids
+
+
+def _fetch_oapi_department_detail(access_token, dept_id):
+    detail_url = _get_setting('DEPT_DETAIL_URL') or 'https://oapi.dingtalk.com/topapi/v2/department/get'
+    response = _oapi_post(
+        detail_url,
+        access_token,
+        {'dept_id': dept_id, 'language': 'zh_CN'},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    result = payload.get('result') or {}
+    if not result:
+        return None
+    return {
+        'dept_id': result.get('dept_id') or dept_id,
+        'name': result.get('name') or str(dept_id),
+        'parent_id': result.get('parent_id') or result.get('parentid'),
+    }
+
+
+def refresh_app_access_token(kind='oapi'):
     if kind == 'openapi':
         token, expires_in = _fetch_openapi_app_token()
     else:
         token, expires_in = _fetch_oapi_app_token()
-    return _cache_app_token(kind, token, expires_in)
+    return _cache_app_token(kind, token, expires_in), expires_in
 
 
 def fetch_user_by_code(code):
@@ -183,7 +230,22 @@ def fetch_departments():
             timeout=10,
         )
     else:
-        response = requests.get(dept_url, params={'access_token': access_token}, timeout=10)
+        # OAPI listsubid: get all dept ids (recursive), then fetch details.
+        if 'listsubid' in dept_url:
+            dept_ids = _fetch_oapi_department_ids(dept_url, access_token, root_dept_id=1, fetch_child=True)
+            departments = []
+            for dept_id in dept_ids:
+                detail = _fetch_oapi_department_detail(access_token, dept_id)
+                if detail:
+                    departments.append(detail)
+            return departments
+
+        params = {'access_token': access_token}
+        payload = None
+        # OAPI listsub requires dept_id, default to root(1).
+        if 'listsub' in dept_url:
+            payload = {'dept_id': 1}
+        response = requests.post(dept_url, params=params, json=payload, timeout=10)
     response.raise_for_status()
     payload = response.json()
     return payload.get('departments') or payload.get('department') or []
@@ -200,6 +262,44 @@ def fetch_department_users(dept_id):
             timeout=10,
         )
     else:
+        if 'topapi/v2/user/list' in user_url:
+            users = []
+            cursor = 0
+            size = 100
+            while True:
+                response = _oapi_post(
+                    user_url,
+                    access_token,
+                    {
+                        'dept_id': dept_id,
+                        'cursor': cursor,
+                        'size': size,
+                        'order_field': 'modify_desc',
+                        'contain_access_limit': False,
+                        'language': 'zh_CN',
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+                result = payload.get('result') or {}
+                users.extend(result.get('list') or [])
+                has_more = result.get('has_more')
+                if isinstance(has_more, str):
+                    has_more = has_more.lower() == 'true'
+                next_cursor = result.get('next_cursor') or result.get('nextCursor')
+                # Some responses rely on next_cursor==0 to signal completion.
+                if has_more is None:
+                    if next_cursor in (None, 0, '0'):
+                        return users
+                else:
+                    if not has_more:
+                        return users
+                try:
+                    cursor = int(next_cursor)
+                except (TypeError, ValueError):
+                    cursor += size
+            return users
+
         response = requests.get(user_url, params={'access_token': access_token, 'dept_id': dept_id}, timeout=10)
     response.raise_for_status()
     payload = response.json()
