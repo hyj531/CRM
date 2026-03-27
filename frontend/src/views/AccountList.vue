@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="account-page">
     <div class="page-header">
       <div>
         <h2 class="page-title">客户</h2>
@@ -33,7 +33,7 @@
     <div v-if="success" style="color: #2b8a3e; margin-bottom: 10px;">{{ success }}</div>
 
     <div class="content-grid">
-      <div class="card">
+      <div class="card account-form-card">
         <div class="section-title">{{ editingId ? '编辑客户' : '新建客户' }}</div>
         <div class="form-grid">
           <div>
@@ -425,3 +425,26 @@ watch([statusFilter, ordering], () => {
   applyFilters()
 })
 </script>
+
+<style scoped>
+.account-page .section-title {
+  font-size: 12px;
+}
+
+.account-form-card label {
+  font-size: 12px;
+}
+
+.account-form-card input,
+.account-form-card select,
+.account-form-card textarea {
+  font-size: 12px;
+}
+
+.account-page .list-card .table th,
+.account-page .list-card .table td {
+  font-size: 12px;
+  padding: 6px 8px;
+  line-height: 1.2;
+}
+</style>
