@@ -171,7 +171,7 @@ class RegionScopedViewSet(viewsets.ModelViewSet):
 class RegionViewSet(viewsets.ModelViewSet):
     queryset = models.Region.objects.all()
     serializer_class = serializers.RegionSerializer
-    permission_classes = [AdminManagePermission]
+    permission_classes = [ReadOnlyOrStaffPermission]
 
 
 class RoleViewSet(viewsets.ModelViewSet):

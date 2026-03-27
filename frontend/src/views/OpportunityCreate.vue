@@ -381,6 +381,13 @@ const cancel = () => {
 }
 
 onMounted(async () => {
+  if (!auth.user && auth.accessToken) {
+    try {
+      await auth.fetchMe()
+    } catch (err) {
+      // ignore: fallback to manual selection
+    }
+  }
   await fetchLookups()
   await fetchUsers()
   await fetchRegions()
@@ -392,6 +399,20 @@ onMounted(async () => {
     form.value.region = Number(auth.user.region)
   }
 })
+
+watch(
+  () => auth.user,
+  (user) => {
+    if (!user) return
+    if (user.id && !form.value.owner) {
+      form.value.owner = Number(user.id)
+    }
+    if (user.region && !form.value.region) {
+      form.value.region = Number(user.region)
+    }
+  },
+  { immediate: true }
+)
 
 watch(accountQuery, (value) => {
   const query = value.trim()
