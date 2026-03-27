@@ -189,6 +189,9 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        queryset = queryset.exclude(Q(region__name='外部人员') | Q(region__code='外部人员'))
+        if self.request.query_params.get('opportunity_owner') in ('1', 'true', 'True'):
+            queryset = queryset.filter(opportunity_items__isnull=False).distinct()
         user = self.request.user
         if not user or user.is_anonymous:
             return queryset.none()

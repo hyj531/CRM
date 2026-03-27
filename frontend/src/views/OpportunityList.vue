@@ -55,6 +55,34 @@
           <input v-model="search" placeholder="搜索商机名称" @keyup.enter="applyFilters" />
         </div>
         <div class="field">
+          <label>客户</label>
+          <select v-model="filters.account">
+            <option value="">全部</option>
+            <option v-for="acc in accounts" :key="acc.id" :value="String(acc.id)">
+              {{ accountLabel(acc) }}
+            </option>
+          </select>
+        </div>
+        <div class="field">
+          <label>区域</label>
+          <select v-model="filters.region">
+            <option value="">全部</option>
+            <option v-for="region in regions" :key="region.id" :value="String(region.id)">
+              {{ region.name || region.code || `ID ${region.id}` }}
+            </option>
+          </select>
+        </div>
+        <div class="field">
+          <label>负责人</label>
+          <select v-model="filters.owner">
+            <option value="">全部</option>
+            <option v-for="u in visibleUsers" :key="u.id" :value="String(u.id)">
+              {{ userLabel(u) }}
+            </option>
+          </select>
+          <div v-if="usersError" style="font-size: 12px; color: #c92a2a;">{{ usersError }}</div>
+        </div>
+        <div class="field">
           <label>商机分类</label>
           <select v-model="filters.opportunity_category">
             <option value="">全部</option>
@@ -69,24 +97,6 @@
             <option value="">全部</option>
             <option v-for="opt in lookupOptions.customer_level" :key="opt.id" :value="String(opt.id)">
               {{ opt.name }}
-            </option>
-          </select>
-        </div>
-        <div class="field">
-          <label>区域</label>
-          <select v-model="filters.region">
-            <option value="">全部</option>
-            <option v-for="region in regions" :key="region.id" :value="String(region.id)">
-              {{ region.name || region.code || `ID ${region.id}` }}
-            </option>
-          </select>
-        </div>
-        <div class="field">
-          <label>客户</label>
-          <select v-model="filters.account">
-            <option value="">全部</option>
-            <option v-for="acc in accounts" :key="acc.id" :value="String(acc.id)">
-              {{ accountLabel(acc) }}
             </option>
           </select>
         </div>
@@ -167,7 +177,8 @@ const filters = ref({
   opportunity_category: '',
   customer_level: '',
   region: '',
-  account: ''
+  account: '',
+  owner: ''
 })
 
 const stages = [
@@ -188,6 +199,8 @@ const lookupOptions = ref({
 })
 const regions = ref([])
 const accounts = ref([])
+const users = ref([])
+const usersError = ref('')
 const currentPage = ref(1)
 const pageSize = 10
 const ordering = ref('-created_at')
@@ -214,6 +227,22 @@ const stageBadgeClass = (stage) => {
 }
 
 const accountLabel = (acc) => acc.full_name || acc.short_name || acc.name || `ID ${acc.id}`
+const userLabel = (user) => {
+  if (!user) return ''
+  const name = [user.first_name, user.last_name].filter(Boolean).join('')
+  return name ? `${user.username}（${name}）` : user.username
+}
+
+const externalRegionId = computed(() => {
+  const match = regions.value.find((r) => r.name === '外部人员' || r.code === '外部人员')
+  return match ? Number(match.id) : null
+})
+
+const visibleUsers = computed(() => {
+  const extId = externalRegionId.value
+  if (!extId) return users.value
+  return users.value.filter((u) => Number(u.region) !== extId)
+})
 
 const buildParams = () => {
   const params = {
@@ -227,6 +256,7 @@ const buildParams = () => {
   if (filters.value.customer_level) params.customer_level = filters.value.customer_level
   if (filters.value.region) params.region = filters.value.region
   if (filters.value.account) params.account = filters.value.account
+  if (filters.value.owner) params.owner = filters.value.owner
   return params
 }
 
@@ -301,9 +331,22 @@ const fetchAccounts = async () => {
   accounts.value = Array.isArray(res.data?.results) ? res.data.results : res.data
 }
 
+const fetchUsers = async () => {
+  usersError.value = ''
+  try {
+    const res = await api.get('/users/', {
+      params: { page: 1, page_size: 200, ordering: 'username', opportunity_owner: 1 }
+    })
+    users.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+  } catch (err) {
+    users.value = []
+    usersError.value = '负责人列表加载失败'
+  }
+}
+
 const resetFilters = () => {
   search.value = ''
-  filters.value = { stage: '', opportunity_category: '', customer_level: '', region: '', account: '' }
+  filters.value = { stage: '', opportunity_category: '', customer_level: '', region: '', account: '', owner: '' }
   applyFilters()
 }
 
@@ -356,6 +399,7 @@ onMounted(async () => {
   await fetchLookups()
   await fetchRegions()
   await fetchAccounts()
+  await fetchUsers()
   await fetchData()
 })
 
