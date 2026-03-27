@@ -17,6 +17,10 @@
         <div class="stat-value">{{ totalCount }}</div>
       </div>
       <div class="stat-card">
+        <div class="stat-label">转化率</div>
+        <div class="stat-value">{{ conversionRate }}</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-label">预计金额合计</div>
         <div class="stat-value">{{ totalAmount }}</div>
       </div>
@@ -291,6 +295,12 @@ const totalAmount = computed(() => {
 })
 const wonCount = computed(() => opportunities.value.filter((item) => item.stage === 'won').length)
 const lostCount = computed(() => opportunities.value.filter((item) => item.stage === 'lost').length)
+const conversionRate = computed(() => {
+  const totalItems = totalCount.value || 0
+  if (!totalItems) return '0%'
+  const rate = (wonCount.value / totalItems) * 100
+  return `${rate.toFixed(2)}%`
+})
 
 const stageCount = (stageValue) => opportunities.value.filter((item) => item.stage === stageValue).length
 

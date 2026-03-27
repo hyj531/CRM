@@ -4,6 +4,8 @@ import csv
 import json
 
 from django.http import HttpResponse
+from django.contrib.auth import password_validation
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import permissions, status, viewsets
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.decorators import api_view, permission_classes, action
@@ -575,6 +577,36 @@ def current_user(request):
         'role': user.role_id,
         'permissions': permissions_map,
     })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def change_password(request):
+    user = request.user
+    old_password = request.data.get('old_password', '')
+    new_password = request.data.get('new_password', '')
+    confirm_password = request.data.get('confirm_password', '')
+
+    if not new_password:
+        return Response({'detail': '新密码不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+    if confirm_password and new_password != confirm_password:
+        return Response({'detail': '两次输入的新密码不一致'}, status=status.HTTP_400_BAD_REQUEST)
+    if user.has_usable_password():
+        if not old_password:
+            return Response({'detail': '请输入当前密码'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.check_password(old_password):
+            return Response({'detail': '当前密码不正确'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        password_validation.validate_password(new_password, user=user)
+    except DjangoValidationError as exc:
+        return Response(
+            {'detail': exc.messages[0] if exc.messages else '密码不符合要求', 'errors': exc.messages},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    user.set_password(new_password)
+    user.save(update_fields=['password'])
+    return Response({'detail': '密码已更新'})
 
 
 class ApprovalStepViewSet(RegionScopedViewSet):

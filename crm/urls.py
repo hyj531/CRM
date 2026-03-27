@@ -37,6 +37,7 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/auth/', include('rest_framework.urls')),
     path('api/auth/me/', views.current_user, name='current_user'),
+    path('api/auth/password/', views.change_password, name='change_password'),
     path('api/auth/jwt/', views.TokenView.as_view(), name='token_obtain_pair'),
     path('api/auth/jwt/refresh/', views.TokenRefreshView.as_view(), name='token_refresh'),
     path('api/auth/dingtalk/', views.DingTalkSSOView.as_view(), name='dingtalk_sso'),

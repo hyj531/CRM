@@ -166,7 +166,7 @@
                 <td>{{ item.address || '-' }}</td>
                 <td>{{ item.phone || '-' }}</td>
                 <td>{{ item.website || '-' }}</td>
-              <td>{{ item.status }}</td>
+              <td>{{ statusLabel(item.status) }}</td>
               <td>{{ item.owner_name || item.owner || '-' }}</td>
               <td>{{ item.region_name || item.region || '-' }}</td>
               <td>
@@ -232,6 +232,14 @@ const form = ref({
 const totalCount = computed(() => total.value)
 const activeCount = computed(() => accounts.value.filter((item) => item.status === 'active').length)
 const archivedCount = computed(() => accounts.value.filter((item) => item.status === 'archived').length)
+
+const statusLabel = (value) => {
+  const map = {
+    active: '启用',
+    archived: '归档'
+  }
+  return map[value] || value || '-'
+}
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const pagedAccounts = computed(() => accounts.value)
