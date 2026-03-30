@@ -1,16 +1,5 @@
 <template>
   <div>
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">商机</h2>
-        <div class="page-subtitle">商机信息维护</div>
-      </div>
-      <div class="page-actions">
-        <button class="button" @click="goCreate">新建商机</button>
-        <button class="button secondary" @click="fetchData">刷新</button>
-      </div>
-    </div>
-
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">商机总数</div>
@@ -51,71 +40,52 @@
 
     <div v-if="error" style="color: #c92a2a; margin-bottom: 10px;">{{ error }}</div>
 
-    <div class="content-grid">
-      <div class="card">
-        <div class="section-title">筛选</div>
-        <div class="field">
-          <label>关键词</label>
-          <input v-model="search" placeholder="搜索商机名称" @keyup.enter="applyFilters" />
-        </div>
-        <div class="field">
-          <label>客户</label>
-          <select v-model="filters.account">
-            <option value="">全部</option>
-            <option v-for="acc in accounts" :key="acc.id" :value="String(acc.id)">
-              {{ accountLabel(acc) }}
-            </option>
-          </select>
-        </div>
-        <div class="field">
-          <label>区域</label>
-          <select v-model="filters.region">
-            <option value="">全部</option>
-            <option v-for="region in regions" :key="region.id" :value="String(region.id)">
-              {{ region.name || region.code || `ID ${region.id}` }}
-            </option>
-          </select>
-        </div>
-        <div class="field">
-          <label>负责人</label>
-          <select v-model="filters.owner">
-            <option value="">全部</option>
-            <option v-for="u in visibleUsers" :key="u.id" :value="String(u.id)">
-              {{ userLabel(u) }}
-            </option>
-          </select>
-          <div v-if="usersError" style="font-size: 12px; color: #c92a2a;">{{ usersError }}</div>
-        </div>
-        <div class="field">
-          <label>商机分类</label>
-          <select v-model="filters.opportunity_category">
-            <option value="">全部</option>
-            <option v-for="opt in lookupOptions.opportunity_category" :key="opt.id" :value="String(opt.id)">
-              {{ opt.name }}
-            </option>
-          </select>
-        </div>
-        <div class="field">
-          <label>客户级别</label>
-          <select v-model="filters.customer_level">
-            <option value="">全部</option>
-            <option v-for="opt in lookupOptions.customer_level" :key="opt.id" :value="String(opt.id)">
-              {{ opt.name }}
-            </option>
-          </select>
-        </div>
-        <div class="filter-actions">
-          <button class="button" @click="applyFilters">搜索</button>
-          <button class="button secondary" @click="resetFilters">清除</button>
-        </div>
+    <div class="filter-bar opportunity-filters">
+      <div class="filter-left">
+        <input v-model="search" placeholder="搜索商机名称" @keyup.enter="applyFilters" />
+        <select v-model="filters.account">
+          <option value="">客户</option>
+          <option v-for="acc in accounts" :key="acc.id" :value="String(acc.id)">
+            {{ accountLabel(acc) }}
+          </option>
+        </select>
+        <select v-model="filters.region">
+          <option value="">区域</option>
+          <option v-for="region in regions" :key="region.id" :value="String(region.id)">
+            {{ region.name || region.code || `ID ${region.id}` }}
+          </option>
+        </select>
+        <select v-model="filters.owner">
+          <option value="">负责人</option>
+          <option v-for="u in visibleUsers" :key="u.id" :value="String(u.id)">
+            {{ userLabel(u) }}
+          </option>
+        </select>
+        <select v-model="filters.opportunity_category">
+          <option value="">商机分类</option>
+          <option v-for="opt in lookupOptions.opportunity_category" :key="opt.id" :value="String(opt.id)">
+            {{ opt.name }}
+          </option>
+        </select>
+        <select v-model="filters.customer_level">
+          <option value="">客户级别</option>
+          <option v-for="opt in lookupOptions.customer_level" :key="opt.id" :value="String(opt.id)">
+            {{ opt.name }}
+          </option>
+        </select>
+        <button class="button" @click="applyFilters">搜索</button>
+        <button class="button secondary" @click="resetFilters">清除</button>
       </div>
+      <div v-if="usersError" style="font-size: 12px; color: #c92a2a;">{{ usersError }}</div>
+    </div>
 
-      <div class="card list-card">
-        <div class="list-head">
+    <div class="card list-card">
+      <div class="list-head">
+        <div class="list-head-info">
           <div>共 {{ totalCount }} 条商机</div>
-          <div>最新跟进实时同步</div>
         </div>
-        <div class="list-toolbar">
+        <div class="list-head-actions">
+          <button class="button" @click="goCreate">新建商机</button>
           <div class="toolbar-left">
             <span class="toolbar-label">排序方式</span>
             <select v-model="ordering" class="compact-select">
@@ -124,40 +94,60 @@
               <option value="expected_amount">预计金额低→高</option>
             </select>
           </div>
-          <button
-            class="button secondary small icon-only"
-            @click="exportCsv"
-            title="导出CSV"
-            aria-label="导出CSV"
-          >
-            <span class="icon">⬇</span>
-          </button>
+        <button
+          class="button secondary small icon-only"
+          @click="exportCsv"
+          title="导出CSV"
+          aria-label="导出CSV"
+        >
+          <span class="icon">⬇</span>
+        </button>
         </div>
-        <div v-for="item in pagedOpportunities" :key="item.id" class="list-row">
-          <div>
-            <router-link class="list-title link-button" :to="`/opportunities/${item.id}`">
-              {{ item.opportunity_name }}
-            </router-link>
-            <div class="list-meta">
-              <span :class="['badge', stageBadgeClass(item.stage)]">{{ stageLabel(item.stage) }}</span>
-              <span>预计金额：{{ item.expected_amount || '-' }}</span>
-              <span>客户：{{ item.account_name || '-' }}</span>
-              <span>区域：{{ item.region_name || '-' }}</span>
-              <span>负责人：{{ item.owner_name || item.owner }}</span>
-              <span>最新跟进：{{ item.latest_followup_note || '-' }}</span>
-            </div>
-          </div>
-          <div class="list-actions">
-            <router-link class="link-button" :to="`/opportunities/${item.id}`">详情</router-link>
-            <button v-if="canDelete" class="button secondary" @click="deleteOpportunity(item.id)">删除</button>
-          </div>
-        </div>
-        <div v-if="!pagedOpportunities.length" style="padding: 16px; color: #888;">暂无数据</div>
-        <div class="pager" style="padding: 0 16px 16px;">
-          <button :disabled="currentPage === 1" @click="changePage(currentPage - 1)">上一页</button>
-          <span>第 {{ currentPage }} / {{ pageCount }} 页</span>
-          <button :disabled="currentPage === pageCount" @click="changePage(currentPage + 1)">下一页</button>
-        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table opportunity-table">
+          <thead>
+            <tr>
+              <th>商机名称</th>
+              <th>阶段</th>
+              <th>预计金额</th>
+              <th>客户</th>
+              <th>区域</th>
+              <th>负责人</th>
+              <th>最新跟进</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in pagedOpportunities" :key="item.id">
+              <td>
+                <router-link class="link-button" :to="`/opportunities/${item.id}`">
+                  {{ item.opportunity_name }}
+                </router-link>
+              </td>
+              <td>
+                <span :class="['badge', stageBadgeClass(item.stage)]">{{ stageLabel(item.stage) }}</span>
+              </td>
+              <td>{{ item.expected_amount || '-' }}</td>
+              <td>{{ item.account_name || '-' }}</td>
+              <td>{{ item.region_name || '-' }}</td>
+              <td>{{ item.owner_name || item.owner || '-' }}</td>
+              <td>{{ item.latest_followup_note || '-' }}</td>
+              <td>
+                <router-link class="link-button" :to="`/opportunities/${item.id}`">详情</router-link>
+                <button v-if="canDelete" class="button secondary" @click="deleteOpportunity(item.id)">删除</button>
+              </td>
+            </tr>
+            <tr v-if="!pagedOpportunities.length">
+              <td colspan="8" style="color: #888;">暂无数据</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pager" style="padding: 0 16px 16px;">
+        <button :disabled="currentPage === 1" @click="changePage(currentPage - 1)">上一页</button>
+        <span>第 {{ currentPage }} / {{ pageCount }} 页</span>
+        <button :disabled="currentPage === pageCount" @click="changePage(currentPage + 1)">下一页</button>
       </div>
     </div>
   </div>

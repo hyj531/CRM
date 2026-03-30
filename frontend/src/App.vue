@@ -6,13 +6,9 @@
     <aside class="sidebar">
       <div class="brand">徐师傅 CRM</div>
       <nav class="nav">
-        <div class="nav-group">销售管理</div>
+        <router-link to="/dashboard"><span class="nav-icon">◈</span>销售看板</router-link>
         <router-link to="/opportunities"><span class="nav-icon">◎</span>商机</router-link>
-        <router-link to="/activities"><span class="nav-icon">✎</span>商机跟进</router-link>
-        <div class="nav-group">客户资料</div>
         <router-link to="/accounts"><span class="nav-icon">◼</span>客户</router-link>
-        <router-link to="/contacts"><span class="nav-icon">●</span>联系人</router-link>
-        <div class="nav-group">合同与回款</div>
         <router-link to="/contracts"><span class="nav-icon">▣</span>合同</router-link>
         <router-link to="/payments"><span class="nav-icon">◆</span>回款</router-link>
       </nav>

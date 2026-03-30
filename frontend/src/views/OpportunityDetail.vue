@@ -37,6 +37,15 @@
             </select>
           </div>
           <div>
+            <label>客户</label>
+            <select v-model.number="opportunity.account">
+              <option :value="null">未设置</option>
+              <option v-for="acc in accounts" :key="acc.id" :value="acc.id">
+                {{ acc.full_name || acc.short_name || acc.name || `ID ${acc.id}` }}
+              </option>
+            </select>
+          </div>
+          <div>
             <label>负责人</label>
             <select v-if="canAssign" v-model.number="opportunity.owner">
               <option v-if="!users.length" :value="opportunity.owner">{{ ownerLabel(opportunity) }}</option>
@@ -112,13 +121,7 @@
         <div class="section-title">新建跟进</div>
         <div class="form-grid">
           <div>
-            <label>跟进方式</label>
-            <select v-model="followupForm.activity_type">
-              <option v-for="t in followupTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
-            </select>
-          </div>
-          <div>
-            <label>跟进主题</label>
+            <label>跟进目标</label>
             <input v-model="followupForm.subject" placeholder="例如：需求确认/方案沟通" />
           </div>
           <div>
@@ -148,15 +151,13 @@
         <table class="table" v-if="activities.length">
           <thead>
             <tr>
-              <th>方式</th>
-              <th>主题</th>
+              <th>目标</th>
               <th>时间</th>
               <th>内容</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="item in activities" :key="item.id">
-              <td>{{ item.activity_type }}</td>
               <td>{{ item.subject }}</td>
               <td>{{ item.due_at || '-' }}</td>
               <td>{{ item.description || '-' }}</td>
@@ -245,6 +246,7 @@ const users = ref([])
 const usersError = ref('')
 const usersLoading = ref(false)
 const regions = ref([])
+const accounts = ref([])
 const activities = ref([])
 const attachments = ref([])
 const attachmentForm = ref({
@@ -374,6 +376,11 @@ const fetchRegions = async () => {
   regions.value = Array.isArray(res.data?.results) ? res.data.results : res.data
 }
 
+const fetchAccounts = async () => {
+  const res = await api.get('/accounts/', { params: { page: 1, page_size: 1000, ordering: '-created_at' } })
+  accounts.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
 const fetchActivities = async () => {
   const res = await api.get('/activities/', {
     params: { opportunity: props.id, ordering: '-due_at', page: 1, page_size: 50 }
@@ -425,7 +432,7 @@ const uploadAttachment = async () => {
 
 const createFollowup = async () => {
   if (!followupForm.value.subject) {
-    followupError.value = '跟进主题不能为空'
+    followupError.value = '跟进目标不能为空'
     return
   }
   followupError.value = ''
@@ -505,6 +512,7 @@ onMounted(async () => {
   await fetchDetail()
   await fetchUsers()
   await fetchRegions()
+  await fetchAccounts()
   await fetchActivities()
   await fetchAttachments()
 })

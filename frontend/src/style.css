@@ -237,6 +237,7 @@ a {
 
 .main {
   padding: 28px 36px 60px;
+  min-width: 0;
 }
 
 .card {
@@ -325,6 +326,306 @@ a {
   overflow-x: auto;
 }
 
+.opportunity-table {
+  min-width: 980px;
+}
+
+.opportunity-table th,
+.opportunity-table td {
+  white-space: nowrap;
+}
+
+.opportunity-table th:nth-child(1),
+.opportunity-table td:nth-child(1) {
+  min-width: 200px;
+}
+
+.opportunity-table th:nth-child(2),
+.opportunity-table td:nth-child(2) {
+  min-width: 110px;
+}
+
+.opportunity-table th:nth-child(3),
+.opportunity-table td:nth-child(3) {
+  min-width: 120px;
+}
+
+.opportunity-table th:nth-child(4),
+.opportunity-table td:nth-child(4) {
+  min-width: 160px;
+}
+
+.opportunity-table th:nth-child(5),
+.opportunity-table td:nth-child(5) {
+  min-width: 120px;
+}
+
+.opportunity-table th:nth-child(6),
+.opportunity-table td:nth-child(6) {
+  min-width: 120px;
+}
+
+.opportunity-table th:nth-child(7),
+.opportunity-table td:nth-child(7) {
+  min-width: 200px;
+}
+
+.opportunity-table th:nth-child(8),
+.opportunity-table td:nth-child(8) {
+  min-width: 140px;
+}
+
+.account-table {
+  min-width: 1100px;
+}
+
+.account-table th,
+.account-table td {
+  white-space: nowrap;
+}
+
+.account-table th:nth-child(1),
+.account-table td:nth-child(1) {
+  min-width: 200px;
+}
+
+.account-table th:nth-child(2),
+.account-table td:nth-child(2) {
+  min-width: 120px;
+}
+
+.account-table th:nth-child(3),
+.account-table td:nth-child(3) {
+  min-width: 100px;
+}
+
+.account-table th:nth-child(4),
+.account-table td:nth-child(4) {
+  min-width: 120px;
+}
+
+.account-table th:nth-child(5),
+.account-table td:nth-child(5) {
+  min-width: 120px;
+}
+
+.account-table th:nth-child(6),
+.account-table td:nth-child(6) {
+  min-width: 140px;
+}
+
+.account-table th:nth-child(7),
+.account-table td:nth-child(7) {
+  min-width: 80px;
+}
+
+.account-table th:nth-child(8),
+.account-table td:nth-child(8) {
+  min-width: 120px;
+}
+
+.account-table th:nth-child(9),
+.account-table td:nth-child(9) {
+  min-width: 120px;
+}
+
+.account-table th:nth-child(10),
+.account-table td:nth-child(10) {
+  min-width: 120px;
+}
+
+.account-table-wrap {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.contract-table {
+  min-width: 1500px;
+}
+
+.contract-table th,
+.contract-table td {
+  white-space: nowrap;
+}
+
+.contract-table th:nth-child(1),
+.contract-table td:nth-child(1) {
+  min-width: 200px;
+}
+
+.contract-table th:nth-child(2),
+.contract-table td:nth-child(2) {
+  min-width: 110px;
+}
+
+.contract-table th:nth-child(3),
+.contract-table td:nth-child(3) {
+  min-width: 110px;
+}
+
+.contract-table th:nth-child(4),
+.contract-table td:nth-child(4) {
+  min-width: 160px;
+}
+
+.contract-table th:nth-child(5),
+.contract-table td:nth-child(5) {
+  min-width: 60px;
+}
+
+.contract-table th:nth-child(6),
+.contract-table td:nth-child(6) {
+  min-width: 120px;
+}
+
+.contract-table th:nth-child(7),
+.contract-table td:nth-child(7) {
+  min-width: 120px;
+}
+
+.contract-table th:nth-child(8),
+.contract-table td:nth-child(8) {
+  min-width: 120px;
+}
+
+.contract-table th:nth-child(9),
+.contract-table td:nth-child(9) {
+  min-width: 120px;
+}
+
+.contract-table th:nth-child(10),
+.contract-table td:nth-child(10) {
+  min-width: 120px;
+}
+
+.contract-table th:nth-child(11),
+.contract-table td:nth-child(11) {
+  min-width: 120px;
+}
+
+.contract-table th:nth-child(12),
+.contract-table td:nth-child(12) {
+  min-width: 120px;
+}
+
+.contract-table th:nth-child(13),
+.contract-table td:nth-child(13) {
+  min-width: 140px;
+}
+
+.contract-table-wrap {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.contract-receivable-table {
+  min-width: 980px;
+}
+
+.contract-receivable-table th,
+.contract-receivable-table td {
+  white-space: nowrap;
+}
+
+.contract-receivable-table th:nth-child(1),
+.contract-receivable-table td:nth-child(1) {
+  min-width: 200px;
+}
+
+.contract-receivable-table th:nth-child(2),
+.contract-receivable-table td:nth-child(2) {
+  min-width: 160px;
+}
+
+.contract-receivable-table th:nth-child(3),
+.contract-receivable-table td:nth-child(3) {
+  min-width: 120px;
+}
+
+.contract-receivable-table th:nth-child(4),
+.contract-receivable-table td:nth-child(4) {
+  min-width: 120px;
+}
+
+.contract-receivable-table th:nth-child(5),
+.contract-receivable-table td:nth-child(5) {
+  min-width: 120px;
+}
+
+.contract-receivable-table th:nth-child(6),
+.contract-receivable-table td:nth-child(6) {
+  min-width: 120px;
+}
+
+.contract-receivable-table th:nth-child(7),
+.contract-receivable-table td:nth-child(7) {
+  min-width: 120px;
+}
+
+.contract-receivable-table th:nth-child(8),
+.contract-receivable-table td:nth-child(8) {
+  min-width: 140px;
+}
+
+.payment-table {
+  min-width: 1200px;
+}
+
+.payment-table th,
+.payment-table td {
+  white-space: nowrap;
+}
+
+.payment-table th:nth-child(1),
+.payment-table td:nth-child(1) {
+  min-width: 200px;
+}
+
+.payment-table th:nth-child(2),
+.payment-table td:nth-child(2) {
+  min-width: 120px;
+}
+
+.payment-table th:nth-child(3),
+.payment-table td:nth-child(3) {
+  min-width: 160px;
+}
+
+.payment-table th:nth-child(4),
+.payment-table td:nth-child(4) {
+  min-width: 100px;
+}
+
+.payment-table th:nth-child(5),
+.payment-table td:nth-child(5) {
+  min-width: 100px;
+}
+
+.payment-table th:nth-child(6),
+.payment-table td:nth-child(6) {
+  min-width: 120px;
+}
+
+.payment-table th:nth-child(7),
+.payment-table td:nth-child(7) {
+  min-width: 160px;
+}
+
+.payment-table th:nth-child(8),
+.payment-table td:nth-child(8) {
+  min-width: 120px;
+}
+
+.payment-table th:nth-child(9),
+.payment-table td:nth-child(9) {
+  min-width: 120px;
+}
+
+.payment-table th:nth-child(10),
+.payment-table td:nth-child(10) {
+  min-width: 140px;
+}
+
 .filter-bar {
   display: flex;
   gap: 10px;
@@ -351,6 +652,75 @@ a {
   gap: 8px;
   flex-wrap: nowrap;
   margin-left: auto;
+}
+
+.opportunity-filters {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.opportunity-filters .filter-left {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.opportunity-filters input,
+.opportunity-filters select {
+  min-width: 140px;
+}
+
+.opportunity-filters .button {
+  white-space: nowrap;
+}
+
+.account-filters,
+.payment-filters,
+.contract-filters {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.contract-filters {
+  overflow-y: visible;
+}
+
+.account-filters .filter-left,
+.payment-filters .filter-left,
+.contract-filters .filter-left {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.account-filters input,
+.account-filters select,
+.payment-filters input,
+.payment-filters select,
+.contract-filters input,
+.contract-filters select {
+  min-width: 140px;
+}
+
+.account-filters .button,
+.payment-filters .button,
+.contract-filters .button {
+  white-space: nowrap;
+}
+
+.dashboard-filters .filter-left {
+  flex-wrap: nowrap;
+}
+
+.dashboard-filters select {
+  min-width: 140px;
+}
+
+.dashboard-filters .button {
+  white-space: nowrap;
+  min-width: 92px;
 }
 
 .list-toolbar {
@@ -582,6 +952,84 @@ input::placeholder, textarea::placeholder {
   font-weight: 700;
 }
 
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dashboard-card {
+  display: grid;
+  gap: 12px;
+}
+
+.mini-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.mini-card {
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #f7f9fc;
+  padding: 12px;
+}
+
+.mini-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mini-value {
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.bar-list {
+  display: grid;
+  gap: 10px;
+}
+
+.bar-item {
+  display: grid;
+  grid-template-columns: 120px 1fr 72px;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.bar-label {
+  color: #2a3b56;
+  font-weight: 600;
+}
+
+.bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #eef2f7;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #66a3ff 0%, #0b4fc4 100%);
+  transition: width 0.3s ease;
+}
+
+.bar-value {
+  text-align: right;
+  color: var(--muted);
+}
+
+.dashboard-table .table td,
+.dashboard-table .table th {
+  font-size: 12px;
+}
+
 .field {
   margin-bottom: 10px;
 }
@@ -727,6 +1175,8 @@ input::placeholder, textarea::placeholder {
 
 .list-card {
   padding: 0;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .list-head {
@@ -738,6 +1188,20 @@ input::placeholder, textarea::placeholder {
   font-size: 13px;
   color: var(--muted);
   background: #f1f5fb;
+  gap: 12px;
+}
+
+.list-head-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.list-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .list-row {
@@ -855,5 +1319,12 @@ input::placeholder, textarea::placeholder {
     width: 100%;
     margin-left: 0;
     justify-content: flex-start;
+  }
+  .bar-item {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .bar-value {
+    text-align: left;
   }
 }

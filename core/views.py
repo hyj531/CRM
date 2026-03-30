@@ -175,6 +175,10 @@ class RegionViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.RegionSerializer
     permission_classes = [ReadOnlyOrStaffPermission]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return queryset.filter(is_active=True)
+
 
 class RoleViewSet(viewsets.ModelViewSet):
     queryset = models.Role.objects.all()
@@ -388,6 +392,22 @@ class ContractViewSet(RegionScopedViewSet):
             queryset = queryset.filter(signed_at__gte=start)
         if end:
             queryset = queryset.filter(signed_at__lte=end)
+        receivable_only = self.request.query_params.get('receivable_only')
+        receivable_urgent = self.request.query_params.get('receivable_urgent')
+        if receivable_only in ('1', 'true', 'True') or receivable_urgent in ('1', 'true', 'True'):
+            from django.db.models import DecimalField, ExpressionWrapper, F, Value
+            from django.db.models.functions import Coalesce
+
+            base_amount = Coalesce('current_output', 'amount')
+            receivable_amount = ExpressionWrapper(
+                base_amount - Coalesce(F('paid_total'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=2))),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+            queryset = queryset.annotate(receivable_amount=receivable_amount)
+            if receivable_only in ('1', 'true', 'True'):
+                queryset = queryset.filter(receivable_amount__gt=0)
+            if receivable_urgent in ('1', 'true', 'True'):
+                queryset = queryset.filter(receivable_urgent=True)
         return queryset
 
     def get_queryset(self):
@@ -681,27 +701,289 @@ class ReportViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request):
-        opportunity_stats = (
-            scoping.apply_scope(models.Opportunity.objects.all(), request.user)
-            .values('stage')
-            .annotate(count=Count('id'), total_value=Sum('expected_amount'))
+        from decimal import Decimal
+        from django.db.models import DecimalField, Value, F, ExpressionWrapper
+        from django.db.models.functions import Coalesce
+
+        year_param = request.query_params.get('year')
+        region_param = request.query_params.get('region')
+        owner_param = request.query_params.get('owner')
+        try:
+            year = int(year_param) if year_param else None
+        except (TypeError, ValueError):
+            year = None
+
+        def apply_filters(queryset, date_field=None):
+            if region_param:
+                queryset = queryset.filter(region_id=region_param)
+            if owner_param:
+                queryset = queryset.filter(owner_id=owner_param)
+            if year and date_field:
+                queryset = queryset.filter(**{f'{date_field}__year': year})
+            return queryset
+
+        opportunity_qs = scoping.apply_scope(models.Opportunity.objects.all(), request.user)
+        lead_qs = scoping.apply_scope(models.Lead.objects.all(), request.user)
+        contract_qs = scoping.apply_scope(models.Contract.objects.all(), request.user)
+        invoice_qs = scoping.apply_scope(models.Invoice.objects.all(), request.user)
+        payment_base_qs = scoping.apply_scope(models.Payment.objects.all(), request.user)
+
+        opportunity_qs = apply_filters(opportunity_qs, date_field='created_at')
+        lead_qs = apply_filters(lead_qs, date_field='created_at')
+        contract_qs = apply_filters(contract_qs, date_field='signed_at')
+        invoice_qs = apply_filters(invoice_qs, date_field='issued_at')
+        payment_base_qs = apply_filters(payment_base_qs)
+        payment_qs = apply_filters(payment_base_qs, date_field='paid_at')
+        paid_payment_qs = payment_qs.filter(status__in=['partial', 'paid'])
+        paid_payment_alltime_qs = payment_base_qs.filter(status__in=['partial', 'paid'])
+
+        stage_stats_raw = opportunity_qs.values('stage').annotate(
+            count=Count('id'),
+            total_value=Coalesce(
+                Sum('expected_amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
         )
-        lead_stats = (
-            scoping.apply_scope(models.Lead.objects.all(), request.user)
-            .values('status')
-            .annotate(count=Count('id'))
+
+        stage_map = {
+            item['stage']: {
+                'count': item['count'],
+                'total_value': item['total_value'] or Decimal('0')
+            }
+            for item in stage_stats_raw
+        }
+        stage_list = []
+        total_count = 0
+        total_amount = Decimal('0')
+        for stage_value, stage_label in models.Opportunity.STAGES:
+            data = stage_map.get(stage_value, {'count': 0, 'total_value': Decimal('0')})
+            total_count += data['count']
+            total_amount += data['total_value'] or Decimal('0')
+            stage_list.append({
+                'stage': stage_value,
+                'label': stage_label,
+                'count': data['count'],
+                'total_value': data['total_value'] or Decimal('0'),
+            })
+
+        weighted_expr = ExpressionWrapper(
+            Coalesce(F('expected_amount'), Value(0)) *
+            (Coalesce(F('win_probability'), Value(0)) / Value(100.0)),
+            output_field=DecimalField(max_digits=12, decimal_places=2)
         )
-        contract_total = (
-            scoping.apply_scope(models.Contract.objects.all(), request.user)
-            .aggregate(total_amount=Sum('amount'))
+        weighted_total = opportunity_qs.aggregate(
+            weighted_total=Coalesce(
+                Sum(weighted_expr),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        ).get('weighted_total') or Decimal('0')
+
+        won_count = stage_map.get(models.Opportunity.STAGE_WON, {}).get('count', 0) + \
+            stage_map.get(models.Opportunity.STAGE_FRAMEWORK, {}).get('count', 0)
+        lost_count = stage_map.get(models.Opportunity.STAGE_LOST, {}).get('count', 0)
+
+        lead_stats = lead_qs.values('status').annotate(count=Count('id'))
+
+        contract_total = contract_qs.aggregate(
+            total_amount=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
         )
-        invoice_total = (
-            scoping.apply_scope(models.Invoice.objects.all(), request.user)
-            .aggregate(total_amount=Sum('amount'))
+        invoice_total = invoice_qs.aggregate(
+            total_amount=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
         )
+        payment_total = paid_payment_qs.aggregate(
+            total_amount=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        )
+
+        paid_totals = {
+            item['contract_id']: item['total']
+            for item in payment_base_qs.filter(contract_id__in=contract_qs.values('id'))
+            .values('contract_id')
+            .annotate(total=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            ))
+        }
+        receivable_total = Decimal('0')
+        for item in contract_qs.values('id', 'amount', 'current_output'):
+            base = item['current_output'] if item['current_output'] is not None else item['amount']
+            if base is None:
+                continue
+            receivable_total += base - (paid_totals.get(item['id']) or Decimal('0'))
+
+        owner_map = {}
+        for item in opportunity_qs.values('owner_id', 'owner__username').annotate(
+            opportunity_count=Count('id'),
+            expected_amount=Coalesce(
+                Sum('expected_amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        ):
+            owner_map[item['owner_id']] = {
+                'owner_id': item['owner_id'],
+                'owner_name': item['owner__username'] or '',
+                'opportunity_count': item['opportunity_count'],
+                'expected_amount': item['expected_amount'] or Decimal('0'),
+                'contract_amount': Decimal('0'),
+                'payment_amount': Decimal('0'),
+            }
+
+        for item in contract_qs.values('owner_id').annotate(
+            contract_amount=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        ):
+            entry = owner_map.setdefault(item['owner_id'], {
+                'owner_id': item['owner_id'],
+                'owner_name': '',
+                'opportunity_count': 0,
+                'expected_amount': Decimal('0'),
+                'contract_amount': Decimal('0'),
+                'payment_amount': Decimal('0'),
+            })
+            entry['contract_amount'] = item['contract_amount'] or Decimal('0')
+
+        for item in paid_payment_qs.values('owner_id').annotate(
+            payment_amount=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        ):
+            entry = owner_map.setdefault(item['owner_id'], {
+                'owner_id': item['owner_id'],
+                'owner_name': '',
+                'opportunity_count': 0,
+                'expected_amount': Decimal('0'),
+                'contract_amount': Decimal('0'),
+                'payment_amount': Decimal('0'),
+            })
+            entry['payment_amount'] = item['payment_amount'] or Decimal('0')
+
+        missing_owner_ids = [oid for oid, item in owner_map.items() if oid and not item.get('owner_name')]
+        if missing_owner_ids:
+            name_map = {
+                item['id']: item['username']
+                for item in User.objects.filter(id__in=missing_owner_ids).values('id', 'username')
+            }
+            for oid in missing_owner_ids:
+                owner_map[oid]['owner_name'] = name_map.get(oid, f'ID {oid}')
+
+        region_map = {}
+        for item in opportunity_qs.values('region_id', 'region__name').annotate(
+            opportunity_count=Count('id'),
+            expected_amount=Coalesce(
+                Sum('expected_amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        ):
+            region_map[item['region_id']] = {
+                'region_id': item['region_id'],
+                'region_name': item['region__name'] or '',
+                'opportunity_count': item['opportunity_count'],
+                'expected_amount': item['expected_amount'] or Decimal('0'),
+                'contract_amount': Decimal('0'),
+                'payment_amount': Decimal('0'),
+            }
+
+        for item in contract_qs.values('region_id').annotate(
+            contract_amount=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        ):
+            entry = region_map.setdefault(item['region_id'], {
+                'region_id': item['region_id'],
+                'region_name': '',
+                'opportunity_count': 0,
+                'expected_amount': Decimal('0'),
+                'contract_amount': Decimal('0'),
+                'payment_amount': Decimal('0'),
+            })
+            entry['contract_amount'] = item['contract_amount'] or Decimal('0')
+
+        for item in paid_payment_qs.values('region_id').annotate(
+            payment_amount=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        ):
+            entry = region_map.setdefault(item['region_id'], {
+                'region_id': item['region_id'],
+                'region_name': '',
+                'opportunity_count': 0,
+                'expected_amount': Decimal('0'),
+                'contract_amount': Decimal('0'),
+                'payment_amount': Decimal('0'),
+            })
+            entry['payment_amount'] = item['payment_amount'] or Decimal('0')
+
+        missing_region_ids = [rid for rid, item in region_map.items() if rid and not item.get('region_name')]
+        if missing_region_ids:
+            name_map = {
+                item['id']: item['name']
+                for item in models.Region.objects.filter(id__in=missing_region_ids).values('id', 'name')
+            }
+            for rid in missing_region_ids:
+                region_map[rid]['region_name'] = name_map.get(rid, f'ID {rid}')
+
+        limit_param = request.query_params.get('limit')
+        try:
+            limit = max(1, min(int(limit_param), 50)) if limit_param else 10
+        except (TypeError, ValueError):
+            limit = 10
+
+        owner_performance = sorted(
+            owner_map.values(),
+            key=lambda item: (item.get('contract_amount') or 0, item.get('expected_amount') or 0),
+            reverse=True
+        )[:limit]
+
+        region_performance = sorted(
+            region_map.values(),
+            key=lambda item: (item.get('contract_amount') or 0, item.get('expected_amount') or 0),
+            reverse=True
+        )[:limit]
+
         return Response({
-            'opportunities': list(opportunity_stats),
+            'opportunities': list(stage_stats_raw),
+            'opportunity_stages': stage_list,
+            'opportunity_totals': {
+                'count': total_count,
+                'total_value': total_amount,
+                'weighted_total': weighted_total,
+                'won_count': won_count,
+                'lost_count': lost_count,
+            },
             'leads': list(lead_stats),
             'contracts': contract_total,
             'invoices': invoice_total,
+            'payments': payment_total,
+            'contract_summary': {
+                'contract_total': contract_total.get('total_amount') or Decimal('0'),
+                'paid_total': payment_total.get('total_amount') or Decimal('0'),
+                'receivable_total': receivable_total,
+            },
+            'owner_performance': owner_performance,
+            'region_performance': region_performance,
         })

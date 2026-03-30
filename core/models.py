@@ -436,6 +436,7 @@ class Contract(OwnedRegionModel):
     final_settlement_amount = models.DecimalField('最终结算金额', max_digits=12, decimal_places=2, null=True, blank=True)
     status = models.CharField('合同状态', max_length=20, choices=STATUSES, default='draft')
     approval_status = models.CharField('审批状态', max_length=20, choices=APPROVAL_STATUSES, default='pending')
+    receivable_urgent = models.BooleanField('重点催收', default=False)
     signed_at = models.DateField('签署日期', null=True, blank=True)
     start_date = models.DateField('生效日期', null=True, blank=True)
     end_date = models.DateField('到期日期', null=True, blank=True)

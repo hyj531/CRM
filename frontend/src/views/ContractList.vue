@@ -1,16 +1,5 @@
 <template>
   <div>
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">合同</h2>
-        <div class="page-subtitle">合同创建、审批与回款衔接</div>
-      </div>
-      <div class="page-actions">
-        <button class="button" @click="goCreate">新建合同</button>
-        <button class="button secondary" @click="fetchData">刷新</button>
-      </div>
-    </div>
-
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">合同总数</div>
@@ -30,95 +19,86 @@
       </div>
     </div>
 
+    <div class="tabs">
+      <button class="tab" :class="{ active: !isReceivableTab }" @click="setTab('all')">全部合同</button>
+      <button class="tab" :class="{ active: isReceivableTab }" @click="setTab('receivable')">应收款</button>
+    </div>
+
     <div v-if="error" style="color: #c92a2a; margin-bottom: 10px;">{{ error }}</div>
 
-    <div class="content-grid">
-      <div class="card">
-        <div class="section-title">筛选</div>
-        <div class="field">
-          <label>关键词</label>
-          <input v-model="search" placeholder="搜索合同编号/名称" @keyup.enter="applyFilters" />
+    <div class="filter-bar contract-filters">
+      <div class="filter-left">
+        <input v-model="search" placeholder="搜索合同编号/名称" @keyup.enter="applyFilters" />
+        <select v-model="filters.status">
+          <option value="">合同状态</option>
+          <option value="draft">草稿</option>
+          <option value="signed">已签署</option>
+          <option value="active">履行中</option>
+          <option value="closed">已关闭</option>
+        </select>
+        <select v-model="filters.approval_status">
+          <option value="">审批状态</option>
+          <option value="pending">待审批</option>
+          <option value="approved">已通过</option>
+          <option value="rejected">已驳回</option>
+        </select>
+        <div class="filter-range">
+          <input v-model="filters.signed_at_start" type="date" />
+          <span class="range-split">至</span>
+          <input v-model="filters.signed_at_end" type="date" />
         </div>
-        <div class="field">
-          <label>合同状态</label>
-          <select v-model="filters.status">
-            <option value="">全部</option>
-            <option value="draft">草稿</option>
-            <option value="signed">已签署</option>
-            <option value="active">履行中</option>
-            <option value="closed">已关闭</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>审批状态</label>
-          <select v-model="filters.approval_status">
-            <option value="">全部</option>
-            <option value="pending">待审批</option>
-            <option value="approved">已通过</option>
-            <option value="rejected">已驳回</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>签约日期</label>
-          <div class="filter-range">
-            <input v-model="filters.signed_at_start" type="date" />
-            <span class="range-split">至</span>
-            <input v-model="filters.signed_at_end" type="date" />
-          </div>
-        </div>
-        <div class="field">
-          <label>甲方</label>
-          <div class="filter-autocomplete">
-            <input
-              v-model="accountSearch"
-              placeholder="输入甲方名称/简称进行模糊搜索"
-              @focus="showAccountDropdown = true"
-              @input="showAccountDropdown = true"
-              @blur="hideAccountDropdown"
-            />
-            <div v-if="showAccountDropdown && accountSearch" class="filter-suggestions">
-              <div
-                v-for="acc in filteredAccounts"
-                :key="acc.id"
-                class="filter-suggestion"
-                @mousedown.prevent="selectFilterAccount(acc)"
-              >
-                {{ accountLabel(acc) }}
-              </div>
-              <div v-if="!filteredAccounts.length" class="filter-empty">无匹配客户</div>
+        <div class="filter-autocomplete">
+          <input
+            v-model="accountSearch"
+            placeholder="输入甲方名称/简称"
+            @focus="showAccountDropdown = true"
+            @input="showAccountDropdown = true"
+            @blur="hideAccountDropdown"
+          />
+          <div v-if="showAccountDropdown && accountSearch" class="filter-suggestions">
+            <div
+              v-for="acc in filteredAccounts"
+              :key="acc.id"
+              class="filter-suggestion"
+              @mousedown.prevent="selectFilterAccount(acc)"
+            >
+              {{ accountLabel(acc) }}
             </div>
+            <div v-if="!filteredAccounts.length" class="filter-empty">无匹配客户</div>
           </div>
         </div>
-        <div class="field">
-          <label>乙方公司</label>
-          <select v-model="filters.vendor_company">
-            <option value="">全部</option>
-            <option v-for="opt in lookupOptions.vendor_company" :key="opt.id" :value="String(opt.id)">
-              {{ opt.name }}
-            </option>
-          </select>
-        </div>
-        <div class="field">
-          <label>区域</label>
-          <select v-model="filters.region">
-            <option value="">全部</option>
-            <option v-for="region in regions" :key="region.id" :value="String(region.id)">
-              {{ region.name || region.code || `ID ${region.id}` }}
-            </option>
-          </select>
-        </div>
-        <div class="filter-actions">
-          <button class="button" @click="applyFilters">搜索</button>
-          <button class="button secondary" @click="resetFilters">清除</button>
-        </div>
+        <select v-model="filters.vendor_company">
+          <option value="">乙方公司</option>
+          <option v-for="opt in lookupOptions.vendor_company" :key="opt.id" :value="String(opt.id)">
+            {{ opt.name }}
+          </option>
+        </select>
+        <select v-model="filters.region">
+          <option value="">区域</option>
+          <option v-for="region in regions" :key="region.id" :value="String(region.id)">
+            {{ region.name || region.code || `ID ${region.id}` }}
+          </option>
+        </select>
+        <button class="button" @click="applyFilters">搜索</button>
+        <button class="button secondary" @click="resetFilters">清除</button>
       </div>
+    </div>
 
-      <div class="card list-card">
-        <div class="list-head">
-          <div>共 {{ totalCount }} 份合同</div>
-          <div>审批与金额状态</div>
+    <div class="card list-card">
+      <div class="list-head">
+        <div class="list-head-info">
+          <div>{{ listTitle }}</div>
         </div>
-        <div class="list-toolbar">
+        <div class="list-head-actions">
+          <a
+            v-if="isReceivableTab"
+            class="text-link small"
+            href="#"
+            @click.prevent="toggleUrgentOnly"
+          >
+            {{ receivableUrgentOnly ? '显示全部应收' : '只看重点催收' }}
+          </a>
+          <button class="button" @click="goCreate">新建合同</button>
           <div class="toolbar-left">
             <span class="toolbar-label">排序方式</span>
             <select v-model="ordering" class="compact-select">
@@ -137,38 +117,107 @@
             <span class="icon">⬇</span>
           </button>
         </div>
-        <div v-for="item in pagedContracts" :key="item.id" class="list-row">
-          <div>
-            <router-link class="list-title link-button" :to="`/contracts/${item.id}`">
-              {{ item.name || item.contract_no || `合同${item.id}` }}
-            </router-link>
-            <div class="list-meta">
-              <span :class="['badge', statusBadgeClass(item.status)]">{{ statusLabel(item.status) }}</span>
-              <span :class="['badge', approvalBadgeClass(item.approval_status)]">
-                {{ approvalLabel(item.approval_status) }}
-              </span>
-              <span>甲方：{{ accountName(item.account) }}</span>
-              <span>乙方：{{ vendorName(item.vendor_company) }}</span>
-              <span>金额：{{ formatMoney(item.amount) }}</span>
-              <span>回款：{{ formatMoney(item.paid_total) }}</span>
-              <span>当前产值：{{ item.current_output ?? '-' }}</span>
-              <span>应收款：{{ receivableAmount(item) }}</span>
-              <span>签署：{{ item.signed_at || '-' }}</span>
-              <span>区域：{{ item.region_name || '-' }}</span>
-              <span>负责人：{{ item.owner_name || item.owner || '-' }}</span>
-            </div>
-          </div>
-          <div class="list-actions">
-            <router-link class="link-button" :to="`/contracts/${item.id}`">详情</router-link>
-            <button v-if="canDelete" class="button secondary" @click="deleteContract(item.id)">删除</button>
-          </div>
-        </div>
-        <div v-if="!pagedContracts.length" style="padding: 16px; color: #888;">暂无数据</div>
-        <div class="pager" style="padding: 0 16px 16px;">
-          <button :disabled="currentPage === 1" @click="changePage(currentPage - 1)">上一页</button>
-          <span>第 {{ currentPage }} / {{ pageCount }} 页</span>
-          <button :disabled="currentPage === pageCount" @click="changePage(currentPage + 1)">下一页</button>
-        </div>
+      </div>
+      <div v-if="!isReceivableTab" class="table-wrap contract-table-wrap">
+        <table class="table contract-table">
+          <thead>
+            <tr>
+              <th>合同名称</th>
+              <th>合同状态</th>
+              <th>审批状态</th>
+              <th>甲方</th>
+              <th>乙方</th>
+              <th>合同金额</th>
+              <th>回款</th>
+              <th>当前产值</th>
+              <th>应收款</th>
+              <th>签署日期</th>
+              <th>区域</th>
+              <th>负责人</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in pagedContracts" :key="item.id">
+              <td>
+                <router-link class="link-button" :to="`/contracts/${item.id}`">
+                  {{ item.name || item.contract_no || `合同${item.id}` }}
+                </router-link>
+              </td>
+              <td>
+                <span :class="['badge', statusBadgeClass(item.status)]">{{ statusLabel(item.status) }}</span>
+              </td>
+              <td>
+                <span :class="['badge', approvalBadgeClass(item.approval_status)]">
+                  {{ approvalLabel(item.approval_status) }}
+                </span>
+              </td>
+              <td>{{ accountName(item.account) }}</td>
+              <td>{{ vendorName(item.vendor_company) }}</td>
+              <td>{{ formatMoney(item.amount) }}</td>
+              <td>{{ formatMoney(item.paid_total) }}</td>
+              <td>{{ item.current_output ?? '-' }}</td>
+              <td>{{ receivableAmount(item) }}</td>
+              <td>{{ item.signed_at || '-' }}</td>
+              <td>{{ item.region_name || '-' }}</td>
+              <td>{{ item.owner_name || item.owner || '-' }}</td>
+              <td>
+                <router-link class="link-button" :to="`/contracts/${item.id}`">详情</router-link>
+                <button v-if="canDelete" class="button secondary" @click="deleteContract(item.id)">删除</button>
+              </td>
+            </tr>
+            <tr v-if="!pagedContracts.length">
+              <td colspan="13" style="color: #888;">暂无数据</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-else class="table-wrap contract-table-wrap">
+        <table class="table contract-receivable-table">
+          <thead>
+            <tr>
+              <th>合同名称</th>
+              <th>客户</th>
+              <th>合同金额</th>
+              <th>已回款</th>
+              <th>应收款</th>
+              <th>负责人</th>
+              <th>区域</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in pagedContracts" :key="item.id" :class="{ 'row-urgent': item.receivable_urgent }">
+              <td>
+                <router-link class="link-button" :to="`/contracts/${item.id}`">
+                  {{ item.name || item.contract_no || `合同${item.id}` }}
+                </router-link>
+                <span v-if="item.receivable_urgent" class="badge orange urgent-badge">重点催收</span>
+              </td>
+              <td>{{ accountName(item.account) }}</td>
+              <td>{{ formatMoney(item.amount) }}</td>
+              <td>{{ formatMoney(item.paid_total) }}</td>
+              <td>{{ receivableAmount(item) }}</td>
+              <td>{{ item.owner_name || item.owner || '-' }}</td>
+              <td>{{ item.region_name || '-' }}</td>
+              <td>
+                <router-link class="link-button" :to="`/contracts/${item.id}`">详情</router-link>
+                <button class="button secondary small" @click="toggleUrgent(item)">
+                  {{ item.receivable_urgent ? '取消催收' : '标记催收' }}
+                </button>
+                <button v-if="canDelete" class="button secondary" @click="deleteContract(item.id)">删除</button>
+              </td>
+            </tr>
+            <tr v-if="!pagedContracts.length">
+              <td colspan="8" style="color: #888;">暂无数据</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pager" style="padding: 0 16px 16px;">
+        <button :disabled="currentPage === 1" @click="changePage(currentPage - 1)">上一页</button>
+        <span>第 {{ currentPage }} / {{ pageCount }} 页</span>
+        <button :disabled="currentPage === pageCount" @click="changePage(currentPage + 1)">下一页</button>
       </div>
     </div>
   </div>
@@ -208,9 +257,12 @@ const showAccountDropdown = ref(false)
 const currentPage = ref(1)
 const pageSize = 10
 const ordering = ref('-signed_at')
+const activeTab = ref('all')
+const receivableUrgentOnly = ref(false)
 const router = useRouter()
 const auth = useAuthStore()
 const canDelete = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.contract?.delete))
+const isReceivableTab = computed(() => activeTab.value === 'receivable')
 
 const statusLabel = (value) => {
   const map = {
@@ -293,12 +345,28 @@ const receivableAmount = (item) => {
   return Number.isFinite(value) ? value.toFixed(2) : '-'
 }
 
+const setTab = (tab) => {
+  if (activeTab.value === tab) return
+  activeTab.value = tab
+  receivableUrgentOnly.value = false
+  currentPage.value = 1
+  fetchData()
+}
+
+const toggleUrgentOnly = () => {
+  receivableUrgentOnly.value = !receivableUrgentOnly.value
+  currentPage.value = 1
+  fetchData()
+}
+
 const buildParams = () => {
   const params = {
     page: currentPage.value,
     page_size: pageSize,
     ordering: ordering.value
   }
+  if (isReceivableTab.value) params.receivable_only = 1
+  if (isReceivableTab.value && receivableUrgentOnly.value) params.receivable_urgent = 1
   if (search.value) params.search = search.value
   if (filters.value.status) params.status = filters.value.status
   if (filters.value.approval_status) params.approval_status = filters.value.approval_status
@@ -366,6 +434,9 @@ const totalCount = computed(() => total.value)
 const contractTotal = computed(() => Number(summary.value.contract_total || 0).toFixed(2))
 const paidTotal = computed(() => Number(summary.value.paid_total || 0).toFixed(2))
 const receivableTotal = computed(() => Number(summary.value.receivable_total || 0).toFixed(2))
+const listTitle = computed(() => (
+  isReceivableTab.value ? `共 ${totalCount.value} 份应收合同` : `共 ${totalCount.value} 份合同`
+))
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const pagedContracts = computed(() => contracts.value)
@@ -411,6 +482,22 @@ const exportCsv = () => {
       link.click()
       URL.revokeObjectURL(url)
     })
+}
+
+const toggleUrgent = async (item) => {
+  if (!item) return
+  const nextValue = !item.receivable_urgent
+  try {
+    await api.patch(`/contracts/${item.id}/`, { receivable_urgent: nextValue })
+    item.receivable_urgent = nextValue
+  } catch (err) {
+    const status = err.response?.status
+    if (status === 403) {
+      error.value = '无修改权限'
+    } else {
+      error.value = '标记失败，请稍后重试'
+    }
+  }
 }
 
 const deleteContract = async (id) => {
@@ -492,5 +579,13 @@ watch(accountSearch, (val) => {
 .filter-empty {
   padding: 8px 10px;
   color: #94a3b8;
+}
+
+.row-urgent td {
+  background: #ffe8cc;
+}
+
+.urgent-badge {
+  margin-left: 6px;
 }
 </style>

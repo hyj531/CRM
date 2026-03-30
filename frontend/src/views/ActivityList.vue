@@ -48,13 +48,7 @@
         <div class="section-title">快速记录</div>
         <div class="form-grid">
           <div>
-            <label>跟进方式</label>
-            <select v-model="form.activity_type">
-              <option v-for="t in types" :key="t.value" :value="t.value">{{ t.label }}</option>
-            </select>
-          </div>
-          <div>
-            <label>跟进主题</label>
+            <label>跟进目标</label>
             <input v-model="form.subject" placeholder="例如：需求确认/方案沟通" />
           </div>
           <div>
@@ -91,7 +85,7 @@
         </div>
         <div class="filter-bar" style="padding: 12px 16px;">
           <div class="filter-left">
-            <input v-model="search" placeholder="搜索跟进主题/内容" @keyup.enter="applyFilters" />
+            <input v-model="search" placeholder="搜索跟进目标/内容" @keyup.enter="applyFilters" />
             <button class="button" @click="applyFilters">搜索</button>
             <button class="button secondary" @click="resetFilters">清除</button>
           </div>
@@ -213,7 +207,7 @@ const typeLabel = (value) => {
 
 const createActivity = async () => {
   if (!form.value.subject) {
-    error.value = '跟进主题不能为空'
+    error.value = '跟进目标不能为空'
     return
   }
   error.value = ''

@@ -5,6 +5,26 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+def _load_env_file(path):
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding='utf-8').splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+# Prefer .env.dev for local dev, then fill missing keys from .env.
+_load_env_file(BASE_DIR / '.env.dev')
+_load_env_file(BASE_DIR / '.env')
+
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', '1') == '1'
 ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', '*').split(',')

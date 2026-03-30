@@ -16,3 +16,11 @@ node_modules/
 frontend/node_modules/
 frontend/test-results/
 frontend/.vite/
+.DS_Store
+frontend/playwright-report/
+coverage/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+core/static/spa/

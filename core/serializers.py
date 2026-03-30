@@ -102,7 +102,7 @@ class LookupCategorySerializer(serializers.ModelSerializer):
 
 class OpportunitySerializer(serializers.ModelSerializer):
     stage_stay_days = serializers.SerializerMethodField(read_only=True)
-    account_name = serializers.CharField(source='account.full_name', read_only=True)
+    account_name = serializers.SerializerMethodField(read_only=True)
     region_name = serializers.CharField(source='region.name', read_only=True)
     owner_name = serializers.CharField(source='owner.username', read_only=True)
 
@@ -121,6 +121,12 @@ class OpportunitySerializer(serializers.ModelSerializer):
         from django.utils import timezone
         delta = timezone.now().date() - obj.stage_entered_at.date()
         return max(delta.days, 0)
+
+    def get_account_name(self, obj):
+        account = getattr(obj, 'account', None)
+        if not account:
+            return ''
+        return account.full_name or account.short_name or getattr(account, 'name', '') or ''
 
     def validate(self, attrs):
         lookup_map = {

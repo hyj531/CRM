@@ -144,6 +144,42 @@
         </div>
       </div>
     </div>
+
+    <div class="card">
+      <div class="section-title">附件</div>
+      <div class="form-grid">
+        <div>
+          <label>选择附件</label>
+          <input :key="attachmentInputKey" type="file" @change="onAttachmentChange" />
+          <div style="margin-top: 6px; font-size: 12px; color: #64748b;">
+            选择文件后直接保存即可自动上传
+          </div>
+        </div>
+        <div>
+          <label>附件备注</label>
+          <input v-model="attachmentForm.description" placeholder="可选" />
+        </div>
+      </div>
+      <div style="margin-top: 10px;">
+        <button class="button secondary" type="button" :disabled="!attachmentForm.file" @click="addAttachment">
+          添加附件
+        </button>
+        <span v-if="attachments.length" style="margin-left: 10px; color: #64748b;">
+          已添加 {{ attachments.length }} 个
+        </span>
+      </div>
+      <div v-if="attachments.length" class="attachment-list">
+        <div v-for="(item, index) in attachments" :key="item.key" class="attachment-item">
+          <div class="attachment-name">{{ item.name }}</div>
+          <div class="attachment-desc">{{ item.description || '无备注' }}</div>
+          <button class="text-link small" type="button" @click="removeAttachment(index)">移除</button>
+        </div>
+      </div>
+      <div v-if="attachmentError" style="margin-top: 8px; color: #c92a2a;">{{ attachmentError }}</div>
+      <div v-if="createdOpportunityId" style="margin-top: 8px;">
+        <a class="text-link" href="#" @click.prevent="goDetail">进入详情继续上传</a>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -171,6 +207,14 @@ const accountCreate = ref({
 })
 const accountCreateSaving = ref(false)
 const accountCreateError = ref('')
+const attachments = ref([])
+const attachmentForm = ref({
+  file: null,
+  description: ''
+})
+const attachmentInputKey = ref(0)
+const attachmentError = ref('')
+const createdOpportunityId = ref(null)
 
 const form = ref({
   opportunity_name: '',
@@ -331,6 +375,57 @@ const createAccount = async () => {
   }
 }
 
+const onAttachmentChange = (event) => {
+  const file = event.target.files && event.target.files[0]
+  attachmentForm.value.file = file || null
+  attachmentError.value = ''
+}
+
+const addAttachment = () => {
+  if (!attachmentForm.value.file) return
+  attachments.value.push({
+    key: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    file: attachmentForm.value.file,
+    name: attachmentForm.value.file.name,
+    description: attachmentForm.value.description || ''
+  })
+  attachmentForm.value = { file: null, description: '' }
+  attachmentInputKey.value += 1
+}
+
+const removeAttachment = (index) => {
+  attachments.value.splice(index, 1)
+}
+
+const uploadAttachments = async (opportunityId) => {
+  if (!attachments.value.length) return true
+  attachmentError.value = ''
+  try {
+    for (const item of attachments.value) {
+      const formData = new FormData()
+      formData.append('opportunity', String(opportunityId))
+      formData.append('file', item.file)
+      if (item.description) {
+        formData.append('description', item.description)
+      }
+      await api.post('/opportunity-attachments/', formData)
+    }
+    attachments.value = []
+    return true
+  } catch (err) {
+    const detail = err.response?.data
+    if (detail && typeof detail === 'object') {
+      const messages = Object.entries(detail)
+        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join('；') : value}`)
+        .join(' | ')
+      attachmentError.value = messages || '附件上传失败，请稍后重试'
+    } else {
+      attachmentError.value = '附件上传失败，请稍后重试'
+    }
+    return false
+  }
+}
+
 const normalizePayload = () => ({
   opportunity_name: form.value.opportunity_name,
   stage: form.value.stage,
@@ -355,7 +450,26 @@ const save = async () => {
   saving.value = true
   try {
     const res = await api.post('/opportunities/', normalizePayload())
-    router.push(`/opportunities/${res.data.id}`)
+    const createdId = res.data.id
+    createdOpportunityId.value = createdId
+    if (attachmentForm.value.file) {
+      attachments.value.push({
+        key: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        file: attachmentForm.value.file,
+        name: attachmentForm.value.file.name,
+        description: attachmentForm.value.description || ''
+      })
+      attachmentForm.value = { file: null, description: '' }
+      attachmentInputKey.value += 1
+    }
+    if (attachments.value.length) {
+      const ok = await uploadAttachments(createdId)
+      if (!ok) {
+        error.value = '商机已创建，附件上传失败，可在详情页继续上传'
+        return
+      }
+    }
+    router.push(`/opportunities/${createdId}`)
   } catch (err) {
     const status = err.response?.status
     if (status === 401) {
@@ -373,6 +487,12 @@ const save = async () => {
     }
   } finally {
     saving.value = false
+  }
+}
+
+const goDetail = () => {
+  if (createdOpportunityId.value) {
+    router.push(`/opportunities/${createdOpportunityId.value}`)
   }
 }
 
@@ -434,3 +554,38 @@ watch(accountQuery, (value) => {
   }, 300)
 })
 </script>
+
+<style scoped>
+.attachment-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.attachment-item {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: 13px;
+}
+
+.attachment-name {
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-desc {
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>
