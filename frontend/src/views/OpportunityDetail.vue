@@ -31,17 +31,65 @@
             <input v-model="opportunity.opportunity_name" />
           </div>
           <div>
+            <label>客户</label>
+            <select v-model.number="opportunity.account">
+              <option :value="null">未设置</option>
+              <option v-for="acc in accounts" :key="acc.id" :value="acc.id">
+                {{ acc.full_name || acc.short_name || acc.name || `ID ${acc.id}` }}
+              </option>
+            </select>
+          </div>
+          <div>
             <label>阶段</label>
             <select v-model="opportunity.stage">
               <option v-for="s in stages" :key="s.value" :value="s.value">{{ s.label }}</option>
             </select>
           </div>
           <div>
-            <label>客户</label>
-            <select v-model.number="opportunity.account">
+            <label>预计金额</label>
+            <input v-model.number="opportunity.expected_amount" type="number" />
+          </div>
+          <div>
+            <label>成交概率%</label>
+            <input v-model.number="opportunity.win_probability" type="number" min="0" max="100" />
+          </div>
+          <div>
+            <label>预计成交时间</label>
+            <input v-model="opportunity.expected_close_date" type="date" />
+          </div>
+          <div>
+            <label>商机分类</label>
+            <select v-model="opportunity.opportunity_category">
               <option :value="null">未设置</option>
-              <option v-for="acc in accounts" :key="acc.id" :value="acc.id">
-                {{ acc.full_name || acc.short_name || acc.name || `ID ${acc.id}` }}
+              <option v-for="opt in lookupOptions.opportunity_category" :key="opt.id" :value="opt.id">
+                {{ opt.name }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label>企业性质</label>
+            <select v-model="opportunity.enterprise_nature">
+              <option :value="null">未设置</option>
+              <option v-for="opt in lookupOptions.enterprise_nature" :key="opt.id" :value="opt.id">
+                {{ opt.name }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label>线索来源</label>
+            <select v-model="opportunity.lead_source">
+              <option :value="null">未设置</option>
+              <option v-for="opt in lookupOptions.lead_source" :key="opt.id" :value="opt.id">
+                {{ opt.name }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label>所属区域</label>
+            <select v-model.number="opportunity.region">
+              <option :value="null">未设置</option>
+              <option v-for="region in regions" :key="region.id" :value="region.id">
+                {{ region.name || region.code || `ID ${region.id}` }}
               </option>
             </select>
           </div>
@@ -55,60 +103,12 @@
             <div v-if="usersError" style="font-size: 12px; color: #c92a2a;">{{ usersError }}</div>
           </div>
           <div>
-            <label>所属区域</label>
-            <select v-model.number="opportunity.region">
-              <option :value="null">未设置</option>
-              <option v-for="region in regions" :key="region.id" :value="region.id">
-                {{ region.name || region.code || `ID ${region.id}` }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label>成交概率%</label>
-            <input v-model.number="opportunity.win_probability" type="number" min="0" max="100" />
-          </div>
-          <div>
-            <label>预计金额</label>
-            <input v-model.number="opportunity.expected_amount" type="number" />
-          </div>
-          <div>
-            <label>预计成交时间</label>
-            <input v-model="opportunity.expected_close_date" type="date" />
-          </div>
-          <div>
             <label>实际成交金额</label>
             <input v-model.number="opportunity.actual_amount" type="number" />
           </div>
           <div>
             <label>实际成交时间</label>
             <input v-model="opportunity.actual_close_date" type="date" />
-          </div>
-          <div>
-            <label>企业性质</label>
-            <select v-model="opportunity.enterprise_nature">
-              <option :value="null">未设置</option>
-              <option v-for="opt in lookupOptions.enterprise_nature" :key="opt.id" :value="opt.id">
-                {{ opt.name }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label>商机分类</label>
-            <select v-model="opportunity.opportunity_category">
-              <option :value="null">未设置</option>
-              <option v-for="opt in lookupOptions.opportunity_category" :key="opt.id" :value="opt.id">
-                {{ opt.name }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label>线索来源</label>
-            <select v-model="opportunity.lead_source">
-              <option :value="null">未设置</option>
-              <option v-for="opt in lookupOptions.lead_source" :key="opt.id" :value="opt.id">
-                {{ opt.name }}
-              </option>
-            </select>
           </div>
           <div style="grid-column: 1 / -1;">
             <label>备注</label>

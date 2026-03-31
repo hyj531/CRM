@@ -4,13 +4,16 @@
   </div>
   <div v-else class="layout">
     <aside class="sidebar">
-      <div class="brand">徐师傅 CRM</div>
+      <div class="brand">
+        <img class="brand-logo" src="/logo.png" alt="徐师傅 CRM" />
+        <span class="brand-text">徐师傅 CRM</span>
+      </div>
       <nav class="nav">
         <router-link to="/dashboard"><span class="nav-icon">◈</span>销售看板</router-link>
-        <router-link to="/opportunities"><span class="nav-icon">◎</span>商机</router-link>
-        <router-link to="/accounts"><span class="nav-icon">◼</span>客户</router-link>
-        <router-link to="/contracts"><span class="nav-icon">▣</span>合同</router-link>
-        <router-link to="/payments"><span class="nav-icon">◆</span>回款</router-link>
+        <router-link to="/opportunities"><span class="nav-icon">◎</span>商机管理</router-link>
+        <router-link to="/accounts"><span class="nav-icon">◼</span>客户管理</router-link>
+        <router-link to="/contracts"><span class="nav-icon">▣</span>合同管理</router-link>
+        <router-link to="/payments"><span class="nav-icon">◆</span>回款管理</router-link>
       </nav>
       <div class="sidebar-footer">
         <div class="sidebar-user">

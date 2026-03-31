@@ -1,6 +1,9 @@
 <template>
   <div class="card" style="max-width: 420px; margin: 80px auto;">
-    <h2>登录</h2>
+    <div class="login-title">
+      <img class="login-logo" src="/logo.png" alt="徐师傅 CRM" />
+      <h2>徐师傅CRM登录</h2>
+    </div>
     <div class="form-grid">
       <div>
         <label>用户名</label>
@@ -17,6 +20,29 @@
     </div>
   </div>
 </template>
+
+<style scoped>
+.login-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.login-title h2 {
+  margin: 0;
+  line-height: 1;
+}
+
+.login-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+}
+</style>
 
 <script setup>
 import { ref } from 'vue'

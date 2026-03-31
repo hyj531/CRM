@@ -23,74 +23,14 @@
           <input v-model="form.opportunity_name" placeholder="请输入商机名称" />
         </div>
         <div>
-          <label>阶段</label>
-          <select v-model="form.stage">
-            <option v-for="s in stages" :key="s.value" :value="s.value">{{ s.label }}</option>
-          </select>
-        </div>
-        <div v-if="canAssign">
-          <label>负责人</label>
-          <select v-model.number="form.owner">
-            <option :value="null">默认本人</option>
-            <option v-for="u in users" :key="u.id" :value="u.id">{{ u.username }}</option>
-          </select>
-          <div v-if="usersError" style="font-size: 12px; color: #c92a2a;">{{ usersError }}</div>
-        </div>
-        <div>
-          <label>所属区域</label>
-          <select v-model.number="form.region">
-            <option :value="null">默认所属区域</option>
-            <option v-for="region in regions" :key="region.id" :value="region.id">
-              {{ region.name || region.code || `ID ${region.id}` }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label>成交概率%</label>
-          <input v-model.number="form.win_probability" type="number" min="0" max="100" />
-        </div>
-        <div>
-          <label>预计金额</label>
-          <input v-model.number="form.expected_amount" type="number" />
-        </div>
-        <div>
-          <label>预计成交时间</label>
-          <input v-model="form.expected_close_date" type="date" />
-        </div>
-        <div>
-          <label>企业性质</label>
-          <select v-model.number="form.enterprise_nature">
-            <option :value="null">未设置</option>
-            <option v-for="opt in lookupOptions.enterprise_nature" :key="opt.id" :value="opt.id">
-              {{ opt.name }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label>商机分类</label>
-          <select v-model.number="form.opportunity_category">
-            <option :value="null">未设置</option>
-            <option v-for="opt in lookupOptions.opportunity_category" :key="opt.id" :value="opt.id">
-              {{ opt.name }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label>线索来源</label>
-          <select v-model.number="form.lead_source">
-            <option :value="null">未设置</option>
-            <option v-for="opt in lookupOptions.lead_source" :key="opt.id" :value="opt.id">
-              {{ opt.name }}
-            </option>
-          </select>
-        </div>
-        <div>
           <label>客户</label>
           <div class="account-picker">
             <div class="account-search">
               <input
                 v-model="accountQuery"
                 placeholder="输入客户全称/简称，自动搜索"
+                @focus="openAccountDropdown"
+                @blur="closeAccountDropdown"
               />
               <button class="button secondary" type="button" @click="triggerSearch">搜索</button>
               <button v-if="form.account" class="button secondary" type="button" @click="clearAccount">
@@ -98,11 +38,10 @@
               </button>
             </div>
             <div v-if="searchHint" class="account-hint">{{ searchHint }}</div>
-            <div v-if="!accountQuery" class="account-hint">最近客户</div>
             <div v-if="selectedAccountLabel" class="account-selected">
               已选择：{{ selectedAccountLabel }}
             </div>
-            <div class="account-results">
+            <div v-if="showAccountDropdown" class="account-results">
               <div v-if="accountLoading" style="color: #888;">加载中...</div>
               <div v-else-if="!accountOptions.length" style="color: #888;">暂无匹配客户</div>
               <button
@@ -110,7 +49,7 @@
                 :key="acc.id"
                 class="account-option"
                 type="button"
-                @click="selectAccount(acc)"
+                @mousedown.prevent="selectAccount(acc)"
               >
                 {{ acc.full_name }}{{ acc.short_name ? `（${acc.short_name}）` : '' }}
               </button>
@@ -137,6 +76,68 @@
               </div>
             </div>
           </div>
+        </div>
+        <div>
+          <label>阶段</label>
+          <select v-model="form.stage">
+            <option v-for="s in stages" :key="s.value" :value="s.value">{{ s.label }}</option>
+          </select>
+        </div>
+        <div>
+          <label>预计金额</label>
+          <input v-model.number="form.expected_amount" type="number" />
+        </div>
+        <div>
+          <label>成交概率%</label>
+          <input v-model.number="form.win_probability" type="number" min="0" max="100" />
+        </div>
+        <div>
+          <label>预计成交时间</label>
+          <input v-model="form.expected_close_date" type="date" />
+        </div>
+        <div>
+          <label>商机分类</label>
+          <select v-model.number="form.opportunity_category">
+            <option :value="null">未设置</option>
+            <option v-for="opt in lookupOptions.opportunity_category" :key="opt.id" :value="opt.id">
+              {{ opt.name }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label>企业性质</label>
+          <select v-model.number="form.enterprise_nature">
+            <option :value="null">未设置</option>
+            <option v-for="opt in lookupOptions.enterprise_nature" :key="opt.id" :value="opt.id">
+              {{ opt.name }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label>线索来源</label>
+          <select v-model.number="form.lead_source">
+            <option :value="null">未设置</option>
+            <option v-for="opt in lookupOptions.lead_source" :key="opt.id" :value="opt.id">
+              {{ opt.name }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label>所属区域</label>
+          <select v-model.number="form.region">
+            <option :value="null">默认所属区域</option>
+            <option v-for="region in regions" :key="region.id" :value="region.id">
+              {{ region.name || region.code || `ID ${region.id}` }}
+            </option>
+          </select>
+        </div>
+        <div v-if="canAssign">
+          <label>负责人</label>
+          <select v-model.number="form.owner">
+            <option :value="null">默认本人</option>
+            <option v-for="u in users" :key="u.id" :value="u.id">{{ u.username }}</option>
+          </select>
+          <div v-if="usersError" style="font-size: 12px; color: #c92a2a;">{{ usersError }}</div>
         </div>
         <div style="grid-column: 1 / -1;">
           <label>备注</label>
@@ -201,6 +202,7 @@ const accountOptions = ref([])
 const accountQuery = ref('')
 const accountLoading = ref(false)
 const selectedAccount = ref(null)
+const showAccountDropdown = ref(false)
 const accountCreate = ref({
   full_name: '',
   short_name: ''
@@ -317,16 +319,31 @@ const searchHint = computed(() => {
   return ''
 })
 
+const openAccountDropdown = () => {
+  showAccountDropdown.value = true
+  if (!accountOptions.value.length) {
+    loadAccounts('')
+  }
+}
+
+const closeAccountDropdown = () => {
+  setTimeout(() => {
+    showAccountDropdown.value = false
+  }, 120)
+}
+
 const selectAccount = (acc) => {
   form.value.account = acc.id
   selectedAccount.value = acc
   accountQuery.value = acc.full_name || acc.short_name || ''
+  showAccountDropdown.value = false
 }
 
 const clearAccount = () => {
   form.value.account = null
   selectedAccount.value = null
   accountQuery.value = ''
+  showAccountDropdown.value = false
 }
 
 const selectedAccountLabel = computed(() => {
@@ -338,7 +355,7 @@ const selectedAccountLabel = computed(() => {
 
 const showQuickCreate = computed(() => {
   const query = accountQuery.value.trim()
-  return query && query.length >= 2 && !accountOptions.value.length
+  return showAccountDropdown.value && query && query.length >= 2 && !accountOptions.value.length
 })
 
 const createAccount = async () => {
@@ -511,7 +528,6 @@ onMounted(async () => {
   await fetchLookups()
   await fetchUsers()
   await fetchRegions()
-  await loadAccounts('')
   if (auth.user?.id && !form.value.owner) {
     form.value.owner = Number(auth.user.id)
   }
