@@ -9,6 +9,9 @@
         <button class="button" :disabled="saving" @click="saveInvoice">
           {{ saving ? '保存中...' : (editingId ? '保存修改' : '保存开票') }}
         </button>
+        <button v-if="editingId" class="button secondary" :disabled="submittingApproval" @click="submitApproval">
+          {{ submittingApproval ? '提交中...' : '提交审批' }}
+        </button>
         <button v-if="editingId" class="button secondary" @click="cancelEdit">取消编辑</button>
         <button class="button secondary" @click="fetchData">刷新</button>
       </div>
@@ -202,6 +205,7 @@ const accounts = ref([])
 const error = ref('')
 const success = ref('')
 const saving = ref(false)
+const submittingApproval = ref(false)
 const auth = useAuthStore()
 const canDelete = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.invoice?.delete))
 const canEdit = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.invoice?.update))
@@ -368,6 +372,27 @@ const saveInvoice = async () => {
     }
   } finally {
     saving.value = false
+  }
+}
+
+const submitApproval = async () => {
+  if (!editingId.value) return
+  error.value = ''
+  success.value = ''
+  submittingApproval.value = true
+  try {
+    await api.post(`/invoices/${editingId.value}/submit_approval/`)
+    success.value = '已提交审批'
+    await fetchData()
+  } catch (err) {
+    const detail = err.response?.data
+    if (detail && typeof detail === 'object') {
+      error.value = detail.detail || '提交审批失败，请检查权限或流程配置'
+    } else {
+      error.value = '提交审批失败，请检查权限或流程配置'
+    }
+  } finally {
+    submittingApproval.value = false
   }
 }
 

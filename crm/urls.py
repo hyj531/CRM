@@ -6,6 +6,7 @@ from rest_framework.routers import DefaultRouter
 from django.views.generic import TemplateView, RedirectView
 
 from core import views
+from approval import views as approval_views
 
 router = DefaultRouter()
 router.register(r'users', views.UserViewSet, basename='user')
@@ -25,10 +26,10 @@ router.register(r'invoices', views.InvoiceViewSet, basename='invoice')
 router.register(r'payments', views.PaymentViewSet, basename='payment')
 router.register(r'activities', views.ActivityViewSet, basename='activity')
 router.register(r'tasks', views.TaskViewSet, basename='task')
-router.register(r'approval-flows', views.ApprovalFlowViewSet, basename='approval-flow')
-router.register(r'approval-steps', views.ApprovalStepViewSet, basename='approval-step')
-router.register(r'approval-instances', views.ApprovalInstanceViewSet, basename='approval-instance')
-router.register(r'approval-tasks', views.ApprovalTaskViewSet, basename='approval-task')
+router.register(r'approval-flows', approval_views.ApprovalFlowViewSet, basename='approval-flow')
+router.register(r'approval-steps', approval_views.ApprovalStepViewSet, basename='approval-step')
+router.register(r'approval-instances', approval_views.ApprovalInstanceViewSet, basename='approval-instance')
+router.register(r'approval-tasks', approval_views.ApprovalTaskViewSet, basename='approval-task')
 router.register(r'reports', views.ReportViewSet, basename='report')
 
 urlpatterns = [

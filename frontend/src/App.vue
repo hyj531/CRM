@@ -24,6 +24,7 @@
             </div>
           </div>
           <div class="sidebar-user-actions">
+            <a class="text-link small" href="#" @click.prevent="goApprovals">我的审批</a>
             <a class="text-link small" href="#" @click.prevent="togglePasswordForm">
               {{ showPasswordForm ? '收起修改密码' : '修改密码' }}
             </a>
@@ -116,6 +117,10 @@ const submitPassword = async () => {
 const handleLogout = () => {
   auth.logout()
   router.push({ name: 'login' })
+}
+
+const goApprovals = () => {
+  router.push({ name: 'approval-task-list' })
 }
 
 onMounted(async () => {

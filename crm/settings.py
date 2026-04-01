@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'django_filters',
     'core.apps.CoreConfig',
+    'approval.apps.ApprovalConfig',
 ]
 
 MIDDLEWARE = [
@@ -173,7 +174,16 @@ DINGTALK = {
     'WEBHOOK': os.getenv('DINGTALK_WEBHOOK', ''),
     'MOCK_USER_ID': os.getenv('DINGTALK_MOCK_USER_ID', ''),
     'SYNC_FILE': os.getenv('DINGTALK_SYNC_FILE', ''),
+    'TODO_CREATE_URL': os.getenv('DINGTALK_TODO_CREATE_URL', ''),
+    'TODO_COMPLETE_URL': os.getenv('DINGTALK_TODO_COMPLETE_URL', ''),
+    'TODO_OPERATOR_UNION_ID': os.getenv('DINGTALK_TODO_OPERATOR_UNION_ID', ''),
+    'OWN_OA_PROCESS_CODE': os.getenv('DINGTALK_OWN_OA_PROCESS_CODE', ''),
+    'OWN_OA_CREATE_URL': os.getenv('DINGTALK_OWN_OA_CREATE_URL', ''),
+    'OWN_OA_FORM_LABEL': os.getenv('DINGTALK_OWN_OA_FORM_LABEL', ''),
+    'TODO_ENABLED': os.getenv('DINGTALK_TODO_ENABLED', '0'),
 }
+
+FRONTEND_BASE_URL = os.getenv('FRONTEND_BASE_URL', 'http://127.0.0.1:5173/app')
 
 LOGGING = {
     'version': 1,

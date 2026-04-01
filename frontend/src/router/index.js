@@ -15,6 +15,8 @@ import PaymentList from '../views/PaymentList.vue'
 import PaymentForm from '../views/PaymentForm.vue'
 import ActivityList from '../views/ActivityList.vue'
 import TaskList from '../views/TaskList.vue'
+import ApprovalTask from '../views/ApprovalTask.vue'
+import ApprovalTaskList from '../views/ApprovalTaskList.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: Login },
@@ -35,7 +37,9 @@ const routes = [
   { path: '/payments/new', name: 'payment-create', component: PaymentForm },
   { path: '/payments/:id', name: 'payment-detail', component: PaymentForm, props: true },
   { path: '/activities', name: 'activities', component: ActivityList },
-  { path: '/tasks', name: 'tasks', component: TaskList }
+  { path: '/tasks', name: 'tasks', component: TaskList },
+  { path: '/approvals/tasks', name: 'approval-task-list', component: ApprovalTaskList },
+  { path: '/approvals/tasks/:id', name: 'approval-task', component: ApprovalTask, props: true }
 ]
 
 const router = createRouter({

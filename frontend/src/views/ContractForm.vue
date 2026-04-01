@@ -17,6 +17,9 @@
         </div>
       </div>
       <div class="page-actions">
+        <button v-if="isEdit" class="button secondary" :disabled="submittingApproval" @click="submitApproval">
+          {{ submittingApproval ? '提交中...' : '提交审批' }}
+        </button>
         <button class="button" :disabled="saving" @click="save">
           {{ saving ? '保存中...' : (isEdit ? '保存修改' : '保存合同') }}
         </button>
@@ -45,18 +48,19 @@
               <input
                 v-model="accountQuery"
                 placeholder="输入甲方全称/简称，自动搜索"
+                @focus="handleAccountFocus"
+                @blur="handleAccountBlur"
               />
               <button class="button secondary" type="button" @click="triggerSearch">搜索</button>
               <button v-if="form.account" class="button secondary" type="button" @click="clearAccount">
                 清除
               </button>
             </div>
-            <div v-if="searchHint" class="account-hint">{{ searchHint }}</div>
-            <div v-if="!accountQuery" class="account-hint">最近甲方</div>
+            <div v-if="showAccountDropdown && searchHint" class="account-hint">{{ searchHint }}</div>
             <div v-if="selectedAccountLabel" class="account-selected">
               已选择：{{ selectedAccountLabel }}
             </div>
-            <div class="account-results">
+            <div v-if="showAccountDropdown" class="account-results">
               <div v-if="accountLoading" style="color: #888;">加载中...</div>
               <div v-else-if="!accountOptions.length" style="color: #888;">暂无匹配客户</div>
               <button
@@ -116,6 +120,15 @@
             <option :value="null">默认所属区域</option>
             <option v-for="region in regions" :key="region.id" :value="region.id">
               {{ region.name || region.code || `ID ${region.id}` }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label>负责人</label>
+          <select v-model.number="form.owner">
+            <option :value="null">默认负责人</option>
+            <option v-for="u in users" :key="u.id" :value="u.id">
+              {{ u.username || u.email || `ID ${u.id}` }}
             </option>
           </select>
         </div>
@@ -297,15 +310,19 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 import api from '../api'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const saving = ref(false)
+const submittingApproval = ref(false)
 const error = ref('')
 const success = ref('')
 const opportunities = ref([])
 const regions = ref([])
+const users = ref([])
 const attachments = ref([])
 const attachmentForm = ref({
   file: null,
@@ -330,6 +347,8 @@ const accountOptions = ref([])
 const accountQuery = ref('')
 const accountLoading = ref(false)
 const selectedAccount = ref(null)
+const accountFocused = ref(false)
+let accountBlurTimer = null
 const accountCreate = ref({
   full_name: '',
   short_name: ''
@@ -344,6 +363,7 @@ const form = ref({
   vendor_company: null,
   opportunity: null,
   region: null,
+  owner: null,
   amount: null,
   current_output: null,
   final_settlement_amount: null,
@@ -406,6 +426,11 @@ const fetchRegions = async () => {
   regions.value = Array.isArray(res.data?.results) ? res.data.results : res.data
 }
 
+const fetchUsers = async () => {
+  const res = await api.get('/users/', { params: { page: 1, page_size: 200, ordering: 'username' } })
+  users.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
 let searchTimer = null
 
 const loadAccounts = async (query) => {
@@ -437,7 +462,6 @@ const fetchAccountById = async (id) => {
 const triggerSearch = () => {
   const query = accountQuery.value.trim()
   if (!query) {
-    loadAccounts('')
     return
   }
   if (query.length < 2) {
@@ -457,6 +481,7 @@ const selectAccount = (acc) => {
   form.value.account = acc.id
   selectedAccount.value = acc
   accountQuery.value = acc.full_name || acc.short_name || ''
+  accountFocused.value = false
 }
 
 const clearAccount = () => {
@@ -471,11 +496,38 @@ const selectedAccountLabel = computed(() => {
   if (!acc) return `ID ${form.value.account}`
   return `${acc.full_name}${acc.short_name ? `（${acc.short_name}）` : ''}`
 })
+const showAccountDropdown = computed(() => accountFocused.value && accountQuery.value.trim().length > 0)
+const applyDefaultOwnerRegion = () => {
+  if (isEdit.value) return
+  if (form.value.region == null && auth.user?.region != null) {
+    form.value.region = Number(auth.user.region)
+  }
+  if (form.value.owner == null && auth.user?.id != null) {
+    form.value.owner = Number(auth.user.id)
+  }
+}
 
 const showQuickCreate = computed(() => {
   const query = accountQuery.value.trim()
   return query && query.length >= 2 && !accountOptions.value.length
 })
+
+const handleAccountFocus = () => {
+  if (accountBlurTimer) {
+    clearTimeout(accountBlurTimer)
+    accountBlurTimer = null
+  }
+  accountFocused.value = true
+}
+
+const handleAccountBlur = () => {
+  if (accountBlurTimer) {
+    clearTimeout(accountBlurTimer)
+  }
+  accountBlurTimer = setTimeout(() => {
+    accountFocused.value = false
+  }, 150)
+}
 
 const paymentStatusLabel = (value) => {
   const map = {
@@ -545,6 +597,7 @@ const loadContract = async () => {
       vendor_company: data.vendor_company != null ? Number(data.vendor_company) : null,
       opportunity: data.opportunity != null ? Number(data.opportunity) : null,
       region: data.region != null ? Number(data.region) : null,
+      owner: data.owner != null ? Number(data.owner) : null,
       amount: data.amount != null ? Number(data.amount) : null,
       current_output: data.current_output != null ? Number(data.current_output) : null,
       final_settlement_amount: data.final_settlement_amount != null ? Number(data.final_settlement_amount) : null,
@@ -715,6 +768,7 @@ const normalizePayload = () => ({
   vendor_company: form.value.vendor_company ? Number(form.value.vendor_company) : null,
   opportunity: form.value.opportunity ? Number(form.value.opportunity) : null,
   region: form.value.region ? Number(form.value.region) : null,
+  owner: form.value.owner ? Number(form.value.owner) : null,
   amount: form.value.amount === '' ? null : form.value.amount,
   current_output: form.value.current_output === '' ? null : form.value.current_output,
   final_settlement_amount: form.value.final_settlement_amount === '' ? null : form.value.final_settlement_amount,
@@ -766,6 +820,27 @@ const save = async () => {
   }
 }
 
+const submitApproval = async () => {
+  if (!isEdit.value) return
+  error.value = ''
+  success.value = ''
+  submittingApproval.value = true
+  try {
+    await api.post(`/contracts/${route.params.id}/submit_approval/`)
+    success.value = '已提交审批'
+    await loadContract()
+  } catch (err) {
+    const detail = err.response?.data
+    if (detail && typeof detail === 'object') {
+      error.value = detail.detail || '提交审批失败，请检查权限或流程配置'
+    } else {
+      error.value = '提交审批失败，请检查权限或流程配置'
+    }
+  } finally {
+    submittingApproval.value = false
+  }
+}
+
 const cancel = () => {
   router.push('/contracts')
 }
@@ -775,13 +850,17 @@ const goBack = () => {
 }
 
 onMounted(async () => {
+  if (!auth.user) {
+    await auth.fetchMe()
+  }
   await fetchLookups()
   await fetchOpportunities()
   await fetchRegions()
-  await loadAccounts('')
+  await fetchUsers()
   await loadContract()
   await fetchAttachments()
   await fetchPayments()
+  applyDefaultOwnerRegion()
   if (route.query.saved) {
     success.value = '合同已保存'
   }
@@ -792,7 +871,7 @@ watch(accountQuery, (value) => {
   if (!query) {
     accountCreate.value.full_name = ''
     if (searchTimer) clearTimeout(searchTimer)
-    loadAccounts('')
+    accountOptions.value = []
     return
   }
   if (!accountCreate.value.full_name) {

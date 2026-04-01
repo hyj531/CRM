@@ -15,7 +15,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 
 from core import models, serializers
-from core.services import approval, scoping, dingtalk_client, dingtalk_sync
+from core.services import scoping, dingtalk_client, dingtalk_sync
+from approval import serializers as approval_serializers
+from approval.services import engine as approval_engine
 
 User = get_user_model()
 
@@ -374,8 +376,8 @@ class QuoteViewSet(RegionScopedViewSet):
     @action(detail=True, methods=['post'])
     def submit_approval(self, request, pk=None):
         quote = self.get_object()
-        instance = approval.start_approval(quote, request.user)
-        return Response(serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
+        instance = approval_engine.start_approval(quote, request.user)
+        return Response(approval_serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
 
 
 class ContractViewSet(RegionScopedViewSet):
@@ -485,8 +487,8 @@ class ContractViewSet(RegionScopedViewSet):
     @action(detail=True, methods=['post'])
     def submit_approval(self, request, pk=None):
         contract = self.get_object()
-        instance = approval.start_approval(contract, request.user)
-        return Response(serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
+        instance = approval_engine.start_approval(contract, request.user)
+        return Response(approval_serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
 
 
 class ContractAttachmentViewSet(RegionScopedViewSet):
@@ -537,8 +539,8 @@ class InvoiceViewSet(RegionScopedViewSet):
     @action(detail=True, methods=['post'])
     def submit_approval(self, request, pk=None):
         invoice = self.get_object()
-        instance = approval.start_approval(invoice, request.user)
-        return Response(serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
+        instance = approval_engine.start_approval(invoice, request.user)
+        return Response(approval_serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
 
 
 class PaymentViewSet(RegionScopedViewSet):
@@ -554,24 +556,6 @@ class PaymentViewSet(RegionScopedViewSet):
             return super().destroy(request, *args, **kwargs)
         except ProtectedError:
             return Response({'detail': '该回款已被关联，无法删除。'}, status=status.HTTP_400_BAD_REQUEST)
-
-
-class ApprovalFlowViewSet(RegionScopedViewSet):
-    queryset = models.ApprovalFlow.objects.all()
-    serializer_class = serializers.ApprovalFlowSerializer
-    scope_owner_field = None
-
-    def get_queryset(self):
-        queryset = models.ApprovalFlow.objects.all()
-        user = self.request.user
-        if user.is_superuser:
-            return queryset
-        region_ids = scoping.get_region_scope_ids(user)
-        if region_ids is None:
-            return queryset
-        if not region_ids:
-            return queryset.filter(region__isnull=True)
-        return queryset.filter(Q(region_id__in=region_ids) | Q(region__isnull=True))
 
 
 @api_view(['GET'])
@@ -627,74 +611,6 @@ def change_password(request):
     user.set_password(new_password)
     user.save(update_fields=['password'])
     return Response({'detail': '密码已更新'})
-
-
-class ApprovalStepViewSet(RegionScopedViewSet):
-    queryset = models.ApprovalStep.objects.all()
-    serializer_class = serializers.ApprovalStepSerializer
-    scope_region_field = 'flow__region'
-    scope_owner_field = None
-
-    def get_queryset(self):
-        queryset = models.ApprovalStep.objects.select_related('flow')
-        user = self.request.user
-        if user.is_superuser:
-            return queryset
-        region_ids = scoping.get_region_scope_ids(user)
-        if region_ids is None:
-            return queryset
-        if not region_ids:
-            return queryset.filter(flow__region__isnull=True)
-        return queryset.filter(Q(flow__region_id__in=region_ids) | Q(flow__region__isnull=True))
-
-
-class ApprovalInstanceViewSet(RegionScopedViewSet):
-    queryset = models.ApprovalInstance.objects.all()
-    serializer_class = serializers.ApprovalInstanceSerializer
-    scope_owner_field = 'started_by'
-
-    def create(self, request, *args, **kwargs):
-        target_type = request.data.get('target_type')
-        object_id = request.data.get('object_id')
-        if not target_type or not object_id:
-            return Response({'detail': 'target_type and object_id are required'}, status=status.HTTP_400_BAD_REQUEST)
-
-        model_map = {
-            models.ApprovalFlow.TARGET_QUOTE: models.Quote,
-            models.ApprovalFlow.TARGET_CONTRACT: models.Contract,
-            models.ApprovalFlow.TARGET_INVOICE: models.Invoice,
-        }
-        target_model = model_map.get(target_type)
-        if not target_model:
-            return Response({'detail': 'Unsupported target_type'}, status=status.HTTP_400_BAD_REQUEST)
-
-        target_obj = scoping.apply_scope(target_model.objects.all(), request.user).filter(id=object_id).first()
-        if not target_obj:
-            return Response({'detail': 'Target not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        instance = approval.start_approval(target_obj, request.user)
-        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
-
-
-class ApprovalTaskViewSet(RegionScopedViewSet):
-    queryset = models.ApprovalTask.objects.select_related('instance', 'step', 'assignee')
-    serializer_class = serializers.ApprovalTaskSerializer
-    scope_region_field = 'instance__region'
-    scope_owner_field = 'assignee'
-
-    @action(detail=True, methods=['post'])
-    def decision(self, request, pk=None):
-        task = self.get_object()
-        approved = request.data.get('approved')
-        comment = request.data.get('comment', '')
-        if approved is None:
-            return Response({'detail': 'approved is required'}, status=status.HTTP_400_BAD_REQUEST)
-        approved_bool = str(approved).lower() in ['1', 'true', 'yes']
-        try:
-            instance = approval.approve_task(task, request.user, approved_bool, comment=comment)
-        except (PermissionError, ValueError) as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializers.ApprovalInstanceSerializer(instance).data)
 
 
 class ReportViewSet(viewsets.ViewSet):

@@ -81,6 +81,24 @@
               <option value="archived">归档</option>
             </select>
           </div>
+          <div>
+            <label>所属区域</label>
+            <select v-model.number="form.region">
+              <option :value="null">默认所属区域</option>
+              <option v-for="r in regions" :key="r.id" :value="r.id">
+                {{ r.name || r.code || `ID ${r.id}` }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label>负责人</label>
+            <select v-model.number="form.owner">
+              <option :value="null">默认负责人</option>
+              <option v-for="u in users" :key="u.id" :value="u.id">
+                {{ u.username || u.email || `ID ${u.id}` }}
+              </option>
+            </select>
+          </div>
         </div>
     </div>
 
@@ -154,10 +172,12 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 import api from '../api'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const error = ref('')
 const success = ref('')
 const saving = ref(false)
@@ -170,6 +190,8 @@ const contacts = ref([])
 const contactError = ref('')
 const contactSuccess = ref('')
 const contactSaving = ref(false)
+const regions = ref([])
+const users = ref([])
 
 const form = ref({
   full_name: '',
@@ -182,7 +204,9 @@ const form = ref({
   address: '',
   phone: '',
   website: '',
-  status: 'active'
+  status: 'active',
+  region: null,
+  owner: null
 })
 
 const contactForm = ref({
@@ -222,6 +246,26 @@ const fetchLookups = async () => {
   }
 }
 
+const fetchRegions = async () => {
+  const res = await api.get('/regions/', { params: { page: 1, page_size: 1000 } })
+  regions.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
+const fetchUsers = async () => {
+  const res = await api.get('/users/', { params: { page: 1, page_size: 200, ordering: 'username' } })
+  users.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
+const applyDefaultOwnerRegion = () => {
+  if (!isNew.value) return
+  if (form.value.region == null && auth.user?.region != null) {
+    form.value.region = Number(auth.user.region)
+  }
+  if (form.value.owner == null && auth.user?.id != null) {
+    form.value.owner = Number(auth.user.id)
+  }
+}
+
 const fetchAccount = async () => {
   if (!accountId.value) return
   const res = await api.get(`/accounts/${accountId.value}/`)
@@ -237,7 +281,9 @@ const fetchAccount = async () => {
     address: data.address || '',
     phone: data.phone || '',
     website: data.website || '',
-    status: data.status || 'active'
+    status: data.status || 'active',
+    region: data.region != null ? Number(data.region) : null,
+    owner: data.owner != null ? Number(data.owner) : null
   }
 }
 
@@ -254,7 +300,9 @@ const saveAccount = async () => {
       ...form.value,
       customer_level: form.value.customer_level ? Number(form.value.customer_level) : null,
       enterprise_nature: form.value.enterprise_nature ? Number(form.value.enterprise_nature) : null,
-      website: form.value.website || ''
+      website: form.value.website || '',
+      region: form.value.region != null ? Number(form.value.region) : null,
+      owner: form.value.owner != null ? Number(form.value.owner) : null
     }
     if (isNew.value) {
       const res = await api.post('/accounts/', payload)
@@ -345,10 +393,17 @@ const saveContact = async () => {
 }
 
 onMounted(async () => {
+  if (!auth.user) {
+    await auth.fetchMe()
+  }
   await fetchLookups()
+  await fetchRegions()
+  await fetchUsers()
   if (!isNew.value) {
     await fetchAccount()
     await fetchContacts()
+  } else {
+    applyDefaultOwnerRegion()
   }
 })
 
@@ -360,6 +415,7 @@ watch(accountId, async (val) => {
     await fetchContacts()
   } else {
     contacts.value = []
+    applyDefaultOwnerRegion()
   }
 })
 </script>

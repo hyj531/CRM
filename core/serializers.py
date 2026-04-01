@@ -301,30 +301,6 @@ class PaymentSerializer(serializers.ModelSerializer):
         }
 
 
-class ApprovalFlowSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = models.ApprovalFlow
-        fields = '__all__'
-
-
-class ApprovalStepSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = models.ApprovalStep
-        fields = '__all__'
-
-
-class ApprovalInstanceSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = models.ApprovalInstance
-        fields = '__all__'
-
-
-class ApprovalTaskSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = models.ApprovalTask
-        fields = '__all__'
-
-
 class DingTalkSyncRequestSerializer(serializers.Serializer):
     departments = serializers.ListField(child=serializers.DictField(), required=False)
     users = serializers.ListField(child=serializers.DictField(), required=False)
