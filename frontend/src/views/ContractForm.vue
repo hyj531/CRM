@@ -17,9 +17,6 @@
         </div>
       </div>
       <div class="page-actions">
-        <button v-if="isEdit" class="button secondary" :disabled="submittingApproval" @click="submitApproval">
-          {{ submittingApproval ? '提交中...' : '提交审批' }}
-        </button>
         <button class="button" :disabled="saving" @click="save">
           {{ saving ? '保存中...' : (isEdit ? '保存修改' : '保存合同') }}
         </button>
