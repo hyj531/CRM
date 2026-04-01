@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from django.db.models import Sum
 
 from core import models
 
@@ -246,7 +247,7 @@ class ContractSerializer(serializers.ModelSerializer):
     def get_receivable_amount(self, obj):
         paid_total = getattr(obj, 'paid_total', None)
         if paid_total is None:
-            paid_total = obj.payments.aggregate(total=models.Sum('amount')).get('total') or 0
+            paid_total = obj.payments.aggregate(total=Sum('amount')).get('total') or 0
         base = obj.current_output if obj.current_output is not None else obj.amount
         if base is None:
             return None

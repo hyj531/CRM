@@ -509,6 +509,14 @@ const showQuickCreate = computed(() => {
   return query && query.length >= 2 && !accountOptions.value.length
 })
 
+const receivableAmount = computed(() => {
+  const base = form.value.current_output != null ? Number(form.value.current_output) : Number(form.value.amount)
+  if (Number.isNaN(base)) return ''
+  const total = Number(paidTotal.value) || 0
+  const value = base - total
+  return Number.isFinite(value) ? value.toFixed(2) : ''
+})
+
 const handleAccountFocus = () => {
   if (accountBlurTimer) {
     clearTimeout(accountBlurTimer)
@@ -764,8 +772,8 @@ const normalizePayload = () => ({
   account: form.value.account ? Number(form.value.account) : null,
   vendor_company: form.value.vendor_company ? Number(form.value.vendor_company) : null,
   opportunity: form.value.opportunity ? Number(form.value.opportunity) : null,
-  region: form.value.region ? Number(form.value.region) : null,
-  owner: form.value.owner ? Number(form.value.owner) : null,
+  ...(form.value.region ? { region: Number(form.value.region) } : {}),
+  ...(form.value.owner ? { owner: Number(form.value.owner) } : {}),
   amount: form.value.amount === '' ? null : form.value.amount,
   current_output: form.value.current_output === '' ? null : form.value.current_output,
   final_settlement_amount: form.value.final_settlement_amount === '' ? null : form.value.final_settlement_amount,
@@ -779,6 +787,14 @@ const normalizePayload = () => ({
 const save = async () => {
   if (!form.value.account) {
     error.value = '请选择关联甲方'
+    return
+  }
+  if (!form.value.region) {
+    error.value = '请选择所属区域'
+    return
+  }
+  if (!form.value.owner) {
+    error.value = '请选择负责人'
     return
   }
   if (!form.value.amount) {
@@ -889,10 +905,3 @@ watch(accountQuery, (value) => {
   font-size: 13px;
 }
 </style>
-const receivableAmount = computed(() => {
-  const base = form.value.current_output != null ? Number(form.value.current_output) : Number(form.value.amount)
-  if (Number.isNaN(base)) return ''
-  const total = Number(paidTotal.value) || 0
-  const value = base - total
-  return Number.isFinite(value) ? value.toFixed(2) : ''
-})
