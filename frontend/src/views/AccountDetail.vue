@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="account-detail">
     <div class="page-header">
       <div>
         <h2 class="page-title">{{ isNew ? '新建客户' : '客户详情' }}</h2>
@@ -419,3 +419,17 @@ watch(accountId, async (val) => {
   }
 })
 </script>
+
+<style scoped>
+.account-detail label {
+  font-size: 11px;
+}
+
+.account-detail input,
+.account-detail select,
+.account-detail textarea {
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+</style>

@@ -251,22 +251,22 @@ watch([statusFilter, ordering], () => {
 
 <style scoped>
 .account-page .section-title {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .account-form-card label {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .account-form-card input,
 .account-form-card select,
 .account-form-card textarea {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .account-page .list-card .table th,
 .account-page .list-card .table td {
-  font-size: 12px;
+  font-size: 14px;
   padding: 6px 8px;
   line-height: 1.2;
 }
