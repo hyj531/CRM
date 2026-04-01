@@ -53,6 +53,8 @@ class LeadSerializer(serializers.ModelSerializer):
 class AccountSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source='owner.username', read_only=True)
     region_name = serializers.CharField(source='region.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
 
     class Meta:
         model = models.Account
@@ -60,6 +62,8 @@ class AccountSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'owner': {'required': False},
             'region': {'required': False},
+            'created_by': {'read_only': True},
+            'updated_by': {'read_only': True},
         }
 
     def validate(self, attrs):
@@ -106,6 +110,8 @@ class OpportunitySerializer(serializers.ModelSerializer):
     account_name = serializers.SerializerMethodField(read_only=True)
     region_name = serializers.CharField(source='region.name', read_only=True)
     owner_name = serializers.CharField(source='owner.username', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
 
     class Meta:
         model = models.Opportunity
@@ -114,6 +120,8 @@ class OpportunitySerializer(serializers.ModelSerializer):
             'stage_entered_at': {'read_only': True},
             'owner': {'required': False},
             'region': {'required': False},
+            'created_by': {'read_only': True},
+            'updated_by': {'read_only': True},
         }
 
     def get_stage_stay_days(self, obj):
@@ -227,6 +235,8 @@ class QuoteSerializer(serializers.ModelSerializer):
 class ContractSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source='owner.username', read_only=True)
     region_name = serializers.CharField(source='region.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
     paid_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     receivable_amount = serializers.SerializerMethodField(read_only=True)
 
@@ -236,6 +246,8 @@ class ContractSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'owner': {'required': False},
             'region': {'required': False},
+            'created_by': {'read_only': True},
+            'updated_by': {'read_only': True},
         }
 
     def validate(self, attrs):
@@ -292,6 +304,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
 class PaymentSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source='owner.username', read_only=True)
     region_name = serializers.CharField(source='region.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
 
     class Meta:
         model = models.Payment
@@ -299,6 +312,7 @@ class PaymentSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'owner': {'required': False},
             'region': {'required': False},
+            'created_by': {'read_only': True},
         }
 
 

@@ -228,6 +228,24 @@ class AccountViewSet(RegionScopedViewSet):
     filterset_fields = ['status', 'customer_level', 'enterprise_nature', 'owner', 'region']
     search_fields = ['full_name', 'short_name', 'industry']
 
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+
+        kwargs = {'created_by': self.request.user, 'updated_by': self.request.user}
+        if 'owner' in serializer.fields and 'owner' not in serializer.validated_data:
+            kwargs['owner'] = self.request.user
+        if 'region' in serializer.fields and 'region' not in serializer.validated_data:
+            region = self.request.user.region
+            if region is None:
+                region_field = serializer.Meta.model._meta.get_field('region')
+                if not getattr(region_field, 'null', False):
+                    raise ValidationError({'region': '请先为当前用户设置所属区域。'})
+            kwargs['region'] = region
+        serializer.save(**kwargs)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
     def destroy(self, request, *args, **kwargs):
         from django.db.models.deletion import ProtectedError
 
@@ -278,6 +296,24 @@ class OpportunityViewSet(RegionScopedViewSet):
         'opportunity_category', 'customer_level', 'lead_source',
     ]
     search_fields = ['opportunity_name']
+
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+
+        kwargs = {'created_by': self.request.user, 'updated_by': self.request.user}
+        if 'owner' in serializer.fields and 'owner' not in serializer.validated_data:
+            kwargs['owner'] = self.request.user
+        if 'region' in serializer.fields and 'region' not in serializer.validated_data:
+            region = self.request.user.region
+            if region is None:
+                region_field = serializer.Meta.model._meta.get_field('region')
+                if not getattr(region_field, 'null', False):
+                    raise ValidationError({'region': '请先为当前用户设置所属区域。'})
+            kwargs['region'] = region
+        serializer.save(**kwargs)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
 
     def destroy(self, request, *args, **kwargs):
         from django.db.models.deletion import ProtectedError
@@ -385,6 +421,24 @@ class ContractViewSet(RegionScopedViewSet):
     serializer_class = serializers.ContractSerializer
     module_code = models.RolePermission.MODULE_CONTRACT
     filterset_fields = ['status', 'approval_status', 'account', 'opportunity', 'vendor_company', 'owner', 'region']
+
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+
+        kwargs = {'created_by': self.request.user, 'updated_by': self.request.user}
+        if 'owner' in serializer.fields and 'owner' not in serializer.validated_data:
+            kwargs['owner'] = self.request.user
+        if 'region' in serializer.fields and 'region' not in serializer.validated_data:
+            region = self.request.user.region
+            if region is None:
+                region_field = serializer.Meta.model._meta.get_field('region')
+                if not getattr(region_field, 'null', False):
+                    raise ValidationError({'region': '请先为当前用户设置所属区域。'})
+            kwargs['region'] = region
+        serializer.save(**kwargs)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
 
     def filter_queryset(self, queryset):
         queryset = super().filter_queryset(queryset)
@@ -548,6 +602,24 @@ class PaymentViewSet(RegionScopedViewSet):
     serializer_class = serializers.PaymentSerializer
     module_code = models.RolePermission.MODULE_PAYMENT
     filterset_fields = ['status', 'contract', 'invoice', 'owner', 'region']
+
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+
+        kwargs = {'created_by': self.request.user}
+        if 'owner' in serializer.fields and 'owner' not in serializer.validated_data:
+            kwargs['owner'] = self.request.user
+        if 'region' in serializer.fields and 'region' not in serializer.validated_data:
+            region = self.request.user.region
+            if region is None:
+                region_field = serializer.Meta.model._meta.get_field('region')
+                if not getattr(region_field, 'null', False):
+                    raise ValidationError({'region': '请先为当前用户设置所属区域。'})
+            kwargs['region'] = region
+        serializer.save(**kwargs)
+
+    def perform_update(self, serializer):
+        serializer.save(created_by=self.request.user)
 
     def destroy(self, request, *args, **kwargs):
         from django.db.models.deletion import ProtectedError

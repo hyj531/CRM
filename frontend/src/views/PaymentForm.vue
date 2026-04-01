@@ -43,6 +43,28 @@
           </div>
         </div>
         <div>
+          <label>所属区域</label>
+          <select v-model.number="form.region">
+            <option :value="null">请选择所属区域</option>
+            <option v-for="r in regions" :key="r.id" :value="r.id">
+              {{ r.name || r.code || `ID ${r.id}` }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label>负责人</label>
+          <select v-model.number="form.owner">
+            <option :value="null">请选择负责人</option>
+            <option v-for="u in users" :key="u.id" :value="u.id">
+              {{ u.username || u.email || `ID ${u.id}` }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label>录入人</label>
+          <input :value="createdByDisplay" disabled />
+        </div>
+        <div>
           <label>回款金额</label>
           <input v-model.number="form.amount" type="number" />
         </div>
@@ -70,20 +92,27 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 import api from '../api'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const contracts = ref([])
 const accounts = ref([])
+const regions = ref([])
+const users = ref([])
 const contractSearch = ref('')
 const showContractDropdown = ref(false)
 const error = ref('')
 const success = ref('')
 const saving = ref(false)
+const createdByName = ref('')
 
 const form = ref({
   contract: null,
+  region: null,
+  owner: null,
   amount: null,
   status: 'planned',
   paid_at: '',
@@ -98,6 +127,11 @@ const paymentId = computed(() => {
 })
 
 const isNew = computed(() => !paymentId.value)
+const createdByDisplay = computed(() => {
+  if (createdByName.value) return createdByName.value
+  if (isNew.value) return auth.user?.username || '-'
+  return '-'
+})
 
 const goBack = () => {
   router.push('/payments')
@@ -128,6 +162,8 @@ const selectContract = (ct) => {
   form.value.contract = ct.id
   contractSearch.value = contractLabel(ct)
   showContractDropdown.value = false
+  form.value.region = ct.region != null ? Number(ct.region) : null
+  form.value.owner = ct.owner != null ? Number(ct.owner) : null
 }
 
 const hideContractDropdown = () => {
@@ -146,19 +182,38 @@ const fetchAccounts = async () => {
   accounts.value = Array.isArray(res.data.results) ? res.data.results : res.data
 }
 
+const fetchRegions = async () => {
+  const res = await api.get('/regions/', { params: { page: 1, page_size: 1000 } })
+  regions.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
+const fetchUsers = async () => {
+  const res = await api.get('/users/', { params: { page: 1, page_size: 200, ordering: 'username' } })
+  users.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
 const fetchPayment = async () => {
   if (!paymentId.value) return
   const res = await api.get(`/payments/${paymentId.value}/`)
   const data = res.data || {}
   form.value = {
     contract: data.contract != null ? Number(data.contract) : null,
+    region: data.region != null ? Number(data.region) : null,
+    owner: data.owner != null ? Number(data.owner) : null,
     amount: data.amount != null ? Number(data.amount) : null,
     status: data.status || 'planned',
     paid_at: data.paid_at || '',
     reference: data.reference || ''
   }
+  createdByName.value = data.created_by_name || ''
   const ct = contracts.value.find((c) => c.id === data.contract)
   contractSearch.value = ct ? contractLabel(ct) : ''
+  if (!form.value.region && ct?.region != null) {
+    form.value.region = Number(ct.region)
+  }
+  if (!form.value.owner && ct?.owner != null) {
+    form.value.owner = Number(ct.owner)
+  }
 }
 
 const savePayment = async () => {
@@ -170,6 +225,14 @@ const savePayment = async () => {
     error.value = '回款金额不能为空'
     return
   }
+  if (!form.value.region) {
+    error.value = '请选择所属区域'
+    return
+  }
+  if (!form.value.owner) {
+    error.value = '请选择负责人'
+    return
+  }
   error.value = ''
   success.value = ''
   saving.value = true
@@ -177,16 +240,20 @@ const savePayment = async () => {
     const payload = {
       ...form.value,
       contract: Number(form.value.contract),
+      region: Number(form.value.region),
+      owner: Number(form.value.owner),
       amount: Number(form.value.amount),
       paid_at: form.value.paid_at || null
     }
     if (isNew.value) {
       await api.post('/payments/', payload)
       success.value = '回款已保存'
+      createdByName.value = auth.user?.username || createdByName.value
       router.push('/payments')
     } else {
       await api.patch(`/payments/${paymentId.value}/`, payload)
       success.value = '回款已更新'
+      createdByName.value = auth.user?.username || createdByName.value
     }
   } catch (err) {
     const detail = err.response?.data
@@ -204,16 +271,25 @@ const savePayment = async () => {
 }
 
 onMounted(async () => {
+  if (!auth.user) {
+    await auth.fetchMe()
+  }
   await fetchAccounts()
   await fetchContracts()
+  await fetchRegions()
+  await fetchUsers()
   if (!isNew.value) {
     await fetchPayment()
+  } else {
+    createdByName.value = auth.user?.username || ''
   }
 })
 
 watch(contractSearch, (val) => {
   if (!val) {
     form.value.contract = null
+    form.value.region = null
+    form.value.owner = null
   }
 })
 </script>

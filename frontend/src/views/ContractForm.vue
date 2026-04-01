@@ -13,6 +13,10 @@
             <span>当前产值：{{ formatMoney(form.current_output) }}</span>
             <span>应收款：{{ receivableAmount || '-' }}</span>
             <span>签署日期：{{ form.signed_at || '-' }}</span>
+            <span>创建人：{{ form.created_by_name || '-' }}</span>
+            <span>创建日期：{{ formatDate(form.created_at) }}</span>
+            <span>更新人：{{ form.updated_by_name || '-' }}</span>
+            <span>更新日期：{{ formatDate(form.updated_at) }}</span>
           </div>
         </div>
       </div>
@@ -255,6 +259,24 @@
             <label>回款时间</label>
             <input v-model="paymentForm.paid_at" type="date" />
           </div>
+          <div>
+            <label>所属区域</label>
+            <select v-model.number="paymentForm.region">
+              <option :value="null">请选择所属区域</option>
+              <option v-for="r in regions" :key="r.id" :value="r.id">
+                {{ r.name || r.code || `ID ${r.id}` }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label>负责人</label>
+            <select v-model.number="paymentForm.owner">
+              <option :value="null">请选择负责人</option>
+              <option v-for="u in users" :key="u.id" :value="u.id">
+                {{ u.username || u.email || `ID ${u.id}` }}
+              </option>
+            </select>
+          </div>
         </div>
         <div style="margin-top: 10px;">
           <button class="button" :disabled="paymentSaving || !paymentForm.amount" @click="savePayment">
@@ -278,7 +300,9 @@
                 <th>回款金额</th>
                 <th>回款时间</th>
                 <th>状态</th>
-                <th>上传人</th>
+                <th>所属区域</th>
+                <th>负责人</th>
+                <th>录入人</th>
                 <th>时间</th>
                 <th>操作</th>
               </tr>
@@ -288,7 +312,9 @@
                 <td>{{ item.amount }}</td>
                 <td>{{ item.paid_at || '-' }}</td>
                 <td>{{ paymentStatusLabel(item.status) }}</td>
+                <td>{{ item.region_name || item.region || '-' }}</td>
                 <td>{{ item.owner_name || item.owner || '-' }}</td>
+                <td>{{ item.created_by_name || item.created_by || '-' }}</td>
                 <td>{{ item.created_at || '-' }}</td>
                 <td>
                   <button class="button secondary" @click="startEditPayment(item)">编辑</button>
@@ -330,7 +356,9 @@ const uploadError = ref('')
 const payments = ref([])
 const paymentForm = ref({
   amount: null,
-  paid_at: ''
+  paid_at: '',
+  region: null,
+  owner: null
 })
 const editingPaymentId = ref(null)
 const paymentSaving = ref(false)
@@ -366,6 +394,10 @@ const form = ref({
   final_settlement_amount: null,
   status: 'draft',
   approval_status: 'pending',
+  created_by_name: '',
+  created_at: '',
+  updated_by_name: '',
+  updated_at: '',
   signed_at: '',
   start_date: '',
   end_date: ''
@@ -399,6 +431,14 @@ const approvalLabel = (value) => {
 const formatMoney = (value) => {
   const num = Number(value)
   return Number.isFinite(num) ? num.toFixed(2) : '-'
+}
+
+const formatDate = (value) => {
+  if (!value) return '-'
+  if (typeof value === 'string') return value.slice(0, 10)
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toISOString().slice(0, 10)
 }
 
 const fetchLookups = async () => {
@@ -501,6 +541,24 @@ const applyDefaultOwnerRegion = () => {
   }
   if (form.value.owner == null && auth.user?.id != null) {
     form.value.owner = Number(auth.user.id)
+  }
+}
+
+const applyPaymentDefaults = () => {
+  if (paymentForm.value.region == null && form.value.region != null) {
+    paymentForm.value.region = Number(form.value.region)
+  }
+  if (paymentForm.value.owner == null && form.value.owner != null) {
+    paymentForm.value.owner = Number(form.value.owner)
+  }
+}
+
+const resetPaymentForm = () => {
+  paymentForm.value = {
+    amount: null,
+    paid_at: '',
+    region: form.value.region != null ? Number(form.value.region) : null,
+    owner: form.value.owner != null ? Number(form.value.owner) : null
   }
 }
 
@@ -608,6 +666,10 @@ const loadContract = async () => {
       final_settlement_amount: data.final_settlement_amount != null ? Number(data.final_settlement_amount) : null,
       status: data.status || 'draft',
       approval_status: data.approval_status || 'pending',
+      created_by_name: data.created_by_name || '',
+      created_at: data.created_at || '',
+      updated_by_name: data.updated_by_name || '',
+      updated_at: data.updated_at || '',
       signed_at: data.signed_at || '',
       start_date: data.start_date || '',
       end_date: data.end_date || ''
@@ -620,6 +682,9 @@ const loadContract = async () => {
         accountQuery.value = acc.full_name
         accountOptions.value = [acc, ...accountOptions.value.filter((item) => item.id !== acc.id)]
       }
+    }
+    if (!editingPaymentId.value) {
+      applyPaymentDefaults()
     }
   } catch (err) {
     error.value = '加载合同失败，请确认该合同存在且有权限访问'
@@ -682,7 +747,9 @@ const startEditPayment = (item) => {
   editingPaymentId.value = item.id
   paymentForm.value = {
     amount: item.amount != null ? Number(item.amount) : null,
-    paid_at: item.paid_at || ''
+    paid_at: item.paid_at || '',
+    region: item.region != null ? Number(item.region) : (form.value.region != null ? Number(form.value.region) : null),
+    owner: item.owner != null ? Number(item.owner) : (form.value.owner != null ? Number(form.value.owner) : null)
   }
   paymentError.value = ''
   paymentSuccess.value = ''
@@ -690,7 +757,7 @@ const startEditPayment = (item) => {
 
 const cancelEditPayment = () => {
   editingPaymentId.value = null
-  paymentForm.value = { amount: null, paid_at: '' }
+  resetPaymentForm()
   paymentError.value = ''
   paymentSuccess.value = ''
 }
@@ -700,6 +767,14 @@ const savePayment = async () => {
     paymentError.value = '回款金额不能为空'
     return
   }
+  if (!paymentForm.value.region) {
+    paymentError.value = '请选择所属区域'
+    return
+  }
+  if (!paymentForm.value.owner) {
+    paymentError.value = '请选择负责人'
+    return
+  }
   paymentError.value = ''
   paymentSuccess.value = ''
   paymentSaving.value = true
@@ -707,21 +782,25 @@ const savePayment = async () => {
     if (editingPaymentId.value) {
       const payload = {
         amount: Number(paymentForm.value.amount),
-        paid_at: paymentForm.value.paid_at || null
+        paid_at: paymentForm.value.paid_at || null,
+        region: Number(paymentForm.value.region),
+        owner: Number(paymentForm.value.owner)
       }
       await api.patch(`/payments/${editingPaymentId.value}/`, payload)
       paymentSuccess.value = '回款已更新'
       editingPaymentId.value = null
-      paymentForm.value = { amount: null, paid_at: '' }
+      resetPaymentForm()
     } else {
       const payload = {
         contract: Number(route.params.id),
         amount: Number(paymentForm.value.amount),
         paid_at: paymentForm.value.paid_at || null,
+        region: Number(paymentForm.value.region),
+        owner: Number(paymentForm.value.owner),
         status: 'paid'
       }
       await api.post('/payments/', payload)
-      paymentForm.value = { amount: null, paid_at: '' }
+      resetPaymentForm()
       paymentSuccess.value = '回款已保存'
     }
     await fetchPayments()
@@ -874,6 +953,7 @@ onMounted(async () => {
   await fetchAttachments()
   await fetchPayments()
   applyDefaultOwnerRegion()
+  applyPaymentDefaults()
   if (route.query.saved) {
     success.value = '合同已保存'
   }

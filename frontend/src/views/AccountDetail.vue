@@ -2,7 +2,15 @@
   <div class="account-detail">
     <div class="page-header">
       <div>
-        <h2 class="page-title">{{ isNew ? '新建客户' : '客户详情' }}</h2>
+        <div class="account-header-line">
+          <h2 class="page-title">{{ isNew ? '新建客户' : '客户详情' }}</h2>
+          <div class="detail-meta">
+            <span>创建人：{{ audit.created_by_name || '-' }}</span>
+            <span>创建日期：{{ formatDate(audit.created_at) }}</span>
+            <span>更新人：{{ audit.updated_by_name || '-' }}</span>
+            <span>更新日期：{{ formatDate(audit.updated_at) }}</span>
+          </div>
+        </div>
         <div class="page-subtitle">客户主数据与联系人维护</div>
       </div>
       <div class="page-actions">
@@ -192,6 +200,12 @@ const contactSuccess = ref('')
 const contactSaving = ref(false)
 const regions = ref([])
 const users = ref([])
+const audit = ref({
+  created_by_name: '',
+  created_at: '',
+  updated_by_name: '',
+  updated_at: ''
+})
 
 const form = ref({
   full_name: '',
@@ -266,6 +280,14 @@ const applyDefaultOwnerRegion = () => {
   }
 }
 
+const formatDate = (value) => {
+  if (!value) return '-'
+  if (typeof value === 'string') return value.slice(0, 10)
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toISOString().slice(0, 10)
+}
+
 const fetchAccount = async () => {
   if (!accountId.value) return
   const res = await api.get(`/accounts/${accountId.value}/`)
@@ -284,6 +306,12 @@ const fetchAccount = async () => {
     status: data.status || 'active',
     region: data.region != null ? Number(data.region) : null,
     owner: data.owner != null ? Number(data.owner) : null
+  }
+  audit.value = {
+    created_by_name: data.created_by_name || '',
+    created_at: data.created_at || '',
+    updated_by_name: data.updated_by_name || '',
+    updated_at: data.updated_at || ''
   }
 }
 
@@ -423,6 +451,21 @@ watch(accountId, async (val) => {
 <style scoped>
 .account-detail label {
   font-size: 11px;
+}
+
+.account-header-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.account-header-line .page-title {
+  margin: 0;
+}
+
+.account-header-line .detail-meta {
+  margin: 0;
 }
 
 .account-detail input,

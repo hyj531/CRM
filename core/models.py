@@ -150,6 +150,14 @@ class Account(OwnedRegionModel):
     ]
 
     full_name = models.CharField('客户全称', max_length=200, unique=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='account_created_items', verbose_name='创建人'
+    )
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='account_updated_items', verbose_name='更新人'
+    )
     short_name = models.CharField('客户简称', max_length=100, blank=True)
     customer_level = models.ForeignKey(
         'LookupOption', null=True, blank=True, on_delete=models.SET_NULL,
@@ -249,6 +257,14 @@ class Opportunity(OwnedRegionModel):
     ]
 
     opportunity_name = models.CharField('商机名称', max_length=200)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='opportunity_created_items', verbose_name='创建人'
+    )
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='opportunity_updated_items', verbose_name='更新人'
+    )
     account = models.ForeignKey(
         Account, null=True, blank=True, on_delete=models.PROTECT, related_name='opportunities', verbose_name='客户'
     )
@@ -421,6 +437,14 @@ class Contract(OwnedRegionModel):
 
     contract_no = models.CharField('合同编号', max_length=100, blank=True)
     name = models.CharField('合同名称', max_length=200, blank=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='contract_created_items', verbose_name='创建人'
+    )
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='contract_updated_items', verbose_name='更新人'
+    )
     account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='contracts', verbose_name='客户')
     vendor_company = models.ForeignKey(
         LookupOption, null=True, blank=True, on_delete=models.SET_NULL,
@@ -510,6 +534,10 @@ class Payment(OwnedRegionModel):
     contract = models.ForeignKey(Contract, on_delete=models.PROTECT, related_name='payments', verbose_name='合同')
     invoice = models.ForeignKey(
         Invoice, null=True, blank=True, on_delete=models.SET_NULL, related_name='payments', verbose_name='开票'
+    )
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='payment_created_items', verbose_name='录入人'
     )
     period_no = models.PositiveIntegerField('回款期次', null=True, blank=True)
     receivable_amount = models.DecimalField('应收金额', max_digits=12, decimal_places=2, null=True, blank=True)

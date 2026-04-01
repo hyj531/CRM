@@ -67,6 +67,7 @@
                 <th>状态</th>
                 <th>回款日期</th>
                 <th>备注</th>
+                <th>录入人</th>
                 <th>负责人</th>
                 <th>所属区域</th>
                 <th>操作</th>
@@ -81,6 +82,7 @@
                 <td>{{ statusLabel(item.status) }}</td>
                 <td>{{ item.paid_at || '-' }}</td>
                 <td>{{ item.reference || '-' }}</td>
+                <td>{{ item.created_by_name || item.created_by || '-' }}</td>
                 <td>{{ item.owner_name || item.owner || '-' }}</td>
                 <td>{{ item.region_name || item.region || '-' }}</td>
                 <td>
@@ -89,7 +91,7 @@
                 </td>
             </tr>
               <tr v-if="!pagedPayments.length">
-                <td colspan="10" style="color: #888;">暂无数据</td>
+                <td colspan="11" style="color: #888;">暂无数据</td>
               </tr>
             </tbody>
           </table>

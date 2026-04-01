@@ -13,6 +13,10 @@
             <span>预计金额：{{ opportunity.expected_amount || '-' }}</span>
             <span>成交概率：{{ opportunity.win_probability || 0 }}%</span>
             <span>阶段停留：{{ opportunity.stage_stay_days || 0 }}天</span>
+            <span>创建人：{{ opportunity.created_by_name || '-' }}</span>
+            <span>创建日期：{{ formatDate(opportunity.created_at) }}</span>
+            <span>更新人：{{ opportunity.updated_by_name || '-' }}</span>
+            <span>更新日期：{{ formatDate(opportunity.updated_at) }}</span>
           </div>
         </div>
         <div class="page-actions">
@@ -259,6 +263,16 @@ const toLocalDateTime = () => {
   const now = new Date()
   const offset = now.getTimezoneOffset() * 60000
   return new Date(now.getTime() - offset).toISOString().slice(0, 16)
+}
+
+const formatDate = (value) => {
+  if (!value) return '-'
+  if (typeof value === 'string') {
+    return value.slice(0, 10)
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toISOString().slice(0, 10)
 }
 
 const followupForm = ref({
