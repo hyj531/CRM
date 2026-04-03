@@ -67,9 +67,9 @@ const createOpportunity = async (request, accessToken, payload) => {
 }
 
 const loginUI = async (page) => {
-  await page.goto('/login')
-  await page.getByLabel('用户名').fill(ADMIN_USERNAME)
-  await page.getByLabel('密码').fill(ADMIN_PASSWORD)
+  await page.goto('/app/login')
+  await page.getByPlaceholder('用户名').fill(ADMIN_USERNAME)
+  await page.getByPlaceholder('密码').fill(ADMIN_PASSWORD)
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/\/opportunities$/)
 }
@@ -123,7 +123,7 @@ test.afterAll(async ({ request }) => {
 
 test('login redirects to opportunities list', async ({ page }) => {
   await loginUI(page)
-  await expect(page.getByRole('heading', { name: '商机' })).toBeVisible()
+  await expect(page.getByPlaceholder('搜索商机名称')).toBeVisible()
 })
 
 test('search filters and opens opportunity detail', async ({ page }) => {
@@ -131,11 +131,15 @@ test('search filters and opens opportunity detail', async ({ page }) => {
 
   const searchInput = page.getByPlaceholder('搜索商机名称')
   await searchInput.fill(opportunityNames[1])
+  const searchResponse = page.waitForResponse(
+    (resp) => resp.url().includes('/api/opportunities/') && resp.url().includes('search=') && resp.status() === 200
+  )
   await page.getByRole('button', { name: '搜索' }).click()
+  await searchResponse
 
-  const listRow = page.locator('.list-row', { hasText: opportunityNames[1] })
+  const listRow = page.locator('tbody tr', { hasText: opportunityNames[1] })
   await expect(listRow).toBeVisible()
-  await expect(page.locator('.list-row', { hasText: opportunityNames[0] })).toHaveCount(0)
+  await expect(page.locator('tbody tr', { hasText: opportunityNames[0] })).toHaveCount(0)
 
   await listRow.getByRole('link', { name: '详情' }).click()
   await expect(page).toHaveURL(/\/opportunities\//)

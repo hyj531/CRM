@@ -530,7 +530,24 @@ a {
 
 .contract-table-wrap {
   max-height: 70vh;
-  overflow: auto;
+  overflow: scroll;
+  scrollbar-gutter: stable both-edges;
+}
+
+.contract-table-wrap::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.contract-table-wrap::-webkit-scrollbar-track {
+  background: #eef2f7;
+  border-radius: 999px;
+}
+
+.contract-table-wrap::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+  border: 2px solid #eef2f7;
 }
 
 .contract-receivable-table {
