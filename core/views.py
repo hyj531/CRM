@@ -755,15 +755,17 @@ class ReportViewSet(viewsets.ViewSet):
                 'total_value': data['total_value'] or Decimal('0'),
             })
 
-        from django.db.models.functions import Cast
+        from django.db.models.functions import Cast, Greatest, Least
 
         win_prob_decimal = Cast(
             Coalesce(F('win_probability'), Value(0)),
-            output_field=DecimalField(max_digits=5, decimal_places=2)
-        )
-        percent_expr = ExpressionWrapper(
-            win_prob_decimal / Value(100.0),
             output_field=DecimalField(max_digits=12, decimal_places=4)
+        )
+        # Clamp to 0-100% to avoid overflow and invalid data
+        win_prob_clamped = Greatest(Least(win_prob_decimal, Value(100.0)), Value(0.0))
+        percent_expr = ExpressionWrapper(
+            win_prob_clamped / Value(100.0),
+            output_field=DecimalField(max_digits=12, decimal_places=6)
         )
         weighted_expr = ExpressionWrapper(
             Coalesce(F('expected_amount'), Value(0)) * percent_expr,
