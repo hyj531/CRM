@@ -20,8 +20,9 @@
     </div>
 
     <div class="tabs">
-      <button class="tab" :class="{ active: !isReceivableTab }" @click="setTab('all')">全部合同</button>
-      <button class="tab" :class="{ active: isReceivableTab }" @click="setTab('receivable')">应收款</button>
+      <button class="tab" :class="{ active: activeTab === 'all' }" @click="setTab('all')">全部合同</button>
+      <button class="tab" :class="{ active: activeTab === 'receivable' }" @click="setTab('receivable')">应收款</button>
+      <button class="tab" :class="{ active: activeTab === 'framework' }" @click="setTab('framework')">框架合同</button>
     </div>
 
     <div v-if="error" style="color: #c92a2a; margin-bottom: 10px;">{{ error }}</div>
@@ -263,6 +264,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const canDelete = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.contract?.delete))
 const isReceivableTab = computed(() => activeTab.value === 'receivable')
+const isFrameworkTab = computed(() => activeTab.value === 'framework')
 
 const statusLabel = (value) => {
   const map = {
@@ -367,6 +369,7 @@ const buildParams = () => {
   }
   if (isReceivableTab.value) params.receivable_only = 1
   if (isReceivableTab.value && receivableUrgentOnly.value) params.receivable_urgent = 1
+  if (isFrameworkTab.value) params.is_framework = 1
   if (search.value) params.search = search.value
   if (filters.value.status) params.status = filters.value.status
   if (filters.value.approval_status) params.approval_status = filters.value.approval_status
@@ -434,9 +437,11 @@ const totalCount = computed(() => total.value)
 const contractTotal = computed(() => Number(summary.value.contract_total || 0).toFixed(2))
 const paidTotal = computed(() => Number(summary.value.paid_total || 0).toFixed(2))
 const receivableTotal = computed(() => Number(summary.value.receivable_total || 0).toFixed(2))
-const listTitle = computed(() => (
-  isReceivableTab.value ? `共 ${totalCount.value} 份应收合同` : `共 ${totalCount.value} 份合同`
-))
+const listTitle = computed(() => {
+  if (isReceivableTab.value) return `共 ${totalCount.value} 份应收合同`
+  if (isFrameworkTab.value) return `共 ${totalCount.value} 份框架合同`
+  return `共 ${totalCount.value} 份合同`
+})
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const pagedContracts = computed(() => contracts.value)

@@ -420,7 +420,7 @@ class ContractViewSet(RegionScopedViewSet):
     queryset = models.Contract.objects.all()
     serializer_class = serializers.ContractSerializer
     module_code = models.RolePermission.MODULE_CONTRACT
-    filterset_fields = ['status', 'approval_status', 'account', 'opportunity', 'vendor_company', 'owner', 'region']
+    filterset_fields = ['status', 'approval_status', 'account', 'opportunity', 'vendor_company', 'owner', 'region', 'is_framework']
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -755,9 +755,18 @@ class ReportViewSet(viewsets.ViewSet):
                 'total_value': data['total_value'] or Decimal('0'),
             })
 
+        from django.db.models.functions import Cast
+
+        win_prob_decimal = Cast(
+            Coalesce(F('win_probability'), Value(0)),
+            output_field=DecimalField(max_digits=5, decimal_places=2)
+        )
+        percent_expr = ExpressionWrapper(
+            win_prob_decimal / Value(100.0),
+            output_field=DecimalField(max_digits=12, decimal_places=4)
+        )
         weighted_expr = ExpressionWrapper(
-            Coalesce(F('expected_amount'), Value(0)) *
-            (Coalesce(F('win_probability'), Value(0)) / Value(100.0)),
+            Coalesce(F('expected_amount'), Value(0)) * percent_expr,
             output_field=DecimalField(max_digits=12, decimal_places=2)
         )
         weighted_total = opportunity_qs.aggregate(

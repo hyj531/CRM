@@ -133,6 +133,13 @@
             </option>
           </select>
         </div>
+        <div>
+          <label>是否为框架合同</label>
+          <select v-model="form.is_framework">
+            <option :value="false">否</option>
+            <option :value="true">是</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -394,6 +401,7 @@ const form = ref({
   final_settlement_amount: null,
   status: 'draft',
   approval_status: 'pending',
+  is_framework: false,
   created_by_name: '',
   created_at: '',
   updated_by_name: '',
@@ -666,6 +674,7 @@ const loadContract = async () => {
       final_settlement_amount: data.final_settlement_amount != null ? Number(data.final_settlement_amount) : null,
       status: data.status || 'draft',
       approval_status: data.approval_status || 'pending',
+      is_framework: Boolean(data.is_framework),
       created_by_name: data.created_by_name || '',
       created_at: data.created_at || '',
       updated_by_name: data.updated_by_name || '',
@@ -853,6 +862,7 @@ const normalizePayload = () => ({
   opportunity: form.value.opportunity ? Number(form.value.opportunity) : null,
   ...(form.value.region ? { region: Number(form.value.region) } : {}),
   ...(form.value.owner ? { owner: Number(form.value.owner) } : {}),
+  is_framework: Boolean(form.value.is_framework),
   amount: form.value.amount === '' ? null : form.value.amount,
   current_output: form.value.current_output === '' ? null : form.value.current_output,
   final_settlement_amount: form.value.final_settlement_amount === '' ? null : form.value.final_settlement_amount,
