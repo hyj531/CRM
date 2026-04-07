@@ -196,6 +196,7 @@ const stages = [
   { value: 'opportunity', label: '商机阶段' },
   { value: 'demand', label: '需求引导' },
   { value: 'solution', label: '方案阶段' },
+  { value: 'bid', label: '投标阶段' },
   { value: 'business', label: '商务谈判' },
   { value: 'contract', label: '合同审批' },
   { value: 'won', label: '成交关闭' },

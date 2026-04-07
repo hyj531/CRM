@@ -238,6 +238,7 @@ class Opportunity(OwnedRegionModel):
     STAGE_OPPORTUNITY = 'opportunity'
     STAGE_DEMAND = 'demand'
     STAGE_SOLUTION = 'solution'
+    STAGE_BID = 'bid'
     STAGE_BUSINESS = 'business'
     STAGE_CONTRACT = 'contract'
     STAGE_WON = 'won'
@@ -249,6 +250,7 @@ class Opportunity(OwnedRegionModel):
         (STAGE_OPPORTUNITY, '商机阶段'),
         (STAGE_DEMAND, '需求引导'),
         (STAGE_SOLUTION, '方案阶段'),
+        (STAGE_BID, '投标阶段'),
         (STAGE_BUSINESS, '商务谈判'),
         (STAGE_CONTRACT, '合同审批'),
         (STAGE_WON, '成交关闭'),
