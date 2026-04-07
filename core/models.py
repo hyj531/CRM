@@ -348,6 +348,14 @@ class Activity(OwnedRegionModel):
     activity_type = models.CharField('跟进方式', max_length=20, choices=TYPES, default='internal')
     subject = models.CharField('跟进主题', max_length=200)
     description = models.TextField('跟进内容', blank=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='activity_created_items', verbose_name='创建人'
+    )
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='activity_updated_items', verbose_name='更新人'
+    )
     lead = models.ForeignKey(
         Lead, null=True, blank=True, on_delete=models.SET_NULL, related_name='activities', verbose_name='线索'
     )
@@ -460,6 +468,10 @@ class Contract(OwnedRegionModel):
     approval_status = models.CharField('审批状态', max_length=20, choices=APPROVAL_STATUSES, default='pending')
     receivable_urgent = models.BooleanField('重点催收', default=False)
     is_framework = models.BooleanField('是否为框架合同', default=False)
+    framework_contract = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='child_contracts', verbose_name='所属框架合同'
+    )
     signed_at = models.DateField('签署日期', null=True, blank=True)
     start_date = models.DateField('生效日期', null=True, blank=True)
     end_date = models.DateField('到期日期', null=True, blank=True)

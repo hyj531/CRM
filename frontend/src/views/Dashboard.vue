@@ -3,17 +3,21 @@
     <div v-if="error" style="color: #c92a2a; margin-bottom: 10px;">{{ error }}</div>
 
     <div class="card" style="padding: 12px 16px;">
-      <div class="filter-bar dashboard-filters" style="margin-bottom: 0;">
-        <div class="filter-left">
-          <select v-model="filters.year">
-            <option value="">全部年度</option>
-            <option v-for="y in years" :key="y" :value="String(y)">{{ y }}年</option>
-          </select>
-          <select v-model="filters.region">
-            <option value="">全部区域</option>
-            <option v-for="r in regions" :key="r.id" :value="String(r.id)">
-              {{ r.name || r.code || `ID ${r.id}` }}
-            </option>
+        <div class="filter-bar dashboard-filters" style="margin-bottom: 0;">
+          <div class="filter-left">
+            <select v-model="filters.year">
+              <option value="">全部年度</option>
+              <option v-for="y in years" :key="y" :value="String(y)">{{ y }}年</option>
+            </select>
+            <select v-model="filters.month" :disabled="!filters.year">
+              <option value="">全部月度</option>
+              <option v-for="m in months" :key="m" :value="String(m)">{{ m }}月</option>
+            </select>
+            <select v-model="filters.region">
+              <option value="">全部区域</option>
+              <option v-for="r in regions" :key="r.id" :value="String(r.id)">
+                {{ r.name || r.code || `ID ${r.id}` }}
+              </option>
           </select>
           <select v-model="filters.owner">
             <option value="">全部负责人</option>
@@ -182,6 +186,7 @@ const usersError = ref('')
 const currentYear = new Date().getFullYear()
 const filters = ref({
   year: String(currentYear),
+  month: '',
   region: '',
   owner: ''
 })
@@ -205,6 +210,10 @@ const formatMoney = (value) => {
 
 const years = computed(() => {
   return Array.from({ length: 5 }, (_, idx) => currentYear - idx)
+})
+
+const months = computed(() => {
+  return Array.from({ length: 12 }, (_, idx) => idx + 1)
 })
 
 const totals = computed(() => {
@@ -267,6 +276,7 @@ const amountPercent = (item) => {
 const buildParams = () => {
   const params = {}
   if (filters.value.year) params.year = filters.value.year
+  if (filters.value.year && filters.value.month) params.month = filters.value.month
   if (filters.value.region) params.region = filters.value.region
   if (filters.value.owner) params.owner = filters.value.owner
   return params
@@ -293,7 +303,7 @@ const applyFilters = () => {
 }
 
 const resetFilters = () => {
-  filters.value = { year: String(currentYear), region: '', owner: '' }
+  filters.value = { year: String(currentYear), month: '', region: '', owner: '' }
   fetchReport()
 }
 

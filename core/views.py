@@ -15,7 +15,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 
 from core import models, serializers
-from core.services import scoping, dingtalk_client, dingtalk_sync
+from core.services import scoping, dingtalk_client, dingtalk_sync, followup
 from approval import serializers as approval_serializers
 from approval.services import engine as approval_engine
 
@@ -297,6 +297,37 @@ class OpportunityViewSet(RegionScopedViewSet):
     ]
     search_fields = ['opportunity_name']
 
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        from decimal import Decimal
+        from django.db.models import DecimalField, Sum, Value, Count
+        from django.db.models.functions import Coalesce
+
+        queryset = scoping.apply_scope(models.Opportunity.objects.all(), request.user)
+
+        totals = queryset.aggregate(
+            total_count=Count('id'),
+            total_amount=Coalesce(
+                Sum('expected_amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        )
+
+        stage_stats = queryset.values('stage').annotate(count=Count('id'))
+        stage_counts = {item['stage']: item['count'] for item in stage_stats}
+
+        won_count = stage_counts.get(models.Opportunity.STAGE_WON, 0) + stage_counts.get(models.Opportunity.STAGE_FRAMEWORK, 0)
+        lost_count = stage_counts.get(models.Opportunity.STAGE_LOST, 0)
+
+        return Response({
+            'total_count': totals.get('total_count') or 0,
+            'total_amount': totals.get('total_amount') or Decimal('0'),
+            'won_count': won_count,
+            'lost_count': lost_count,
+            'stage_counts': stage_counts,
+        })
+
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
 
@@ -364,7 +395,6 @@ class ActivityViewSet(RegionScopedViewSet):
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
-        from django.utils import timezone
 
         kwargs = {}
         if 'owner' in serializer.fields and 'owner' not in serializer.validated_data:
@@ -384,15 +414,24 @@ class ActivityViewSet(RegionScopedViewSet):
                 raise ValidationError({'region': '请先为当前用户设置所属区域，或选择已归属区域的商机。'})
             kwargs['region'] = region
 
+        kwargs['created_by'] = self.request.user
+        kwargs['updated_by'] = self.request.user
         activity = serializer.save(**kwargs)
-
         opportunity = getattr(activity, 'opportunity', None)
         if opportunity:
-            followup_time = activity.due_at or timezone.now()
-            followup_note = activity.description or activity.subject
-            opportunity.latest_followup_at = followup_time
-            opportunity.latest_followup_note = followup_note
-            opportunity.save(update_fields=['latest_followup_at', 'latest_followup_note'])
+            followup.update_opportunity_latest_followup(opportunity.id)
+
+    def perform_update(self, serializer):
+        activity = serializer.save(updated_by=self.request.user)
+        opportunity = getattr(activity, 'opportunity', None)
+        if opportunity:
+            followup.update_opportunity_latest_followup(opportunity.id)
+
+    def perform_destroy(self, instance):
+        opportunity_id = instance.opportunity_id
+        instance.delete()
+        if opportunity_id:
+            followup.update_opportunity_latest_followup(opportunity_id)
 
 
 class TaskViewSet(RegionScopedViewSet):
@@ -420,7 +459,11 @@ class ContractViewSet(RegionScopedViewSet):
     queryset = models.Contract.objects.all()
     serializer_class = serializers.ContractSerializer
     module_code = models.RolePermission.MODULE_CONTRACT
-    filterset_fields = ['status', 'approval_status', 'account', 'opportunity', 'vendor_company', 'owner', 'region', 'is_framework']
+    filterset_fields = [
+        'status', 'approval_status', 'account', 'opportunity', 'vendor_company',
+        'owner', 'region', 'is_framework', 'framework_contract'
+    ]
+    search_fields = ['contract_no', 'name', 'account__full_name', 'account__short_name']
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -450,7 +493,7 @@ class ContractViewSet(RegionScopedViewSet):
             queryset = queryset.filter(signed_at__lte=end)
         receivable_only = self.request.query_params.get('receivable_only')
         receivable_urgent = self.request.query_params.get('receivable_urgent')
-        if receivable_only in ('1', 'true', 'True') or receivable_urgent in ('1', 'true', 'True'):
+        if receivable_only in ('1', 'true', 'True') or receivable_urgent in ('1', 'true', 'True', '0', 'false', 'False'):
             from django.db.models import DecimalField, ExpressionWrapper, F, Value
             from django.db.models.functions import Coalesce
 
@@ -464,6 +507,8 @@ class ContractViewSet(RegionScopedViewSet):
                 queryset = queryset.filter(receivable_amount__gt=0)
             if receivable_urgent in ('1', 'true', 'True'):
                 queryset = queryset.filter(receivable_urgent=True)
+            elif receivable_urgent in ('0', 'false', 'False'):
+                queryset = queryset.filter(receivable_urgent=False)
         return queryset
 
     def get_queryset(self):
@@ -694,12 +739,19 @@ class ReportViewSet(viewsets.ViewSet):
         from django.db.models.functions import Coalesce
 
         year_param = request.query_params.get('year')
+        month_param = request.query_params.get('month')
         region_param = request.query_params.get('region')
         owner_param = request.query_params.get('owner')
         try:
             year = int(year_param) if year_param else None
         except (TypeError, ValueError):
             year = None
+        try:
+            month = int(month_param) if month_param else None
+        except (TypeError, ValueError):
+            month = None
+        if month not in range(1, 13):
+            month = None
 
         def apply_filters(queryset, date_field=None):
             if region_param:
@@ -708,6 +760,8 @@ class ReportViewSet(viewsets.ViewSet):
                 queryset = queryset.filter(owner_id=owner_param)
             if year and date_field:
                 queryset = queryset.filter(**{f'{date_field}__year': year})
+                if month:
+                    queryset = queryset.filter(**{f'{date_field}__month': month})
             return queryset
 
         opportunity_qs = scoping.apply_scope(models.Opportunity.objects.all(), request.user)

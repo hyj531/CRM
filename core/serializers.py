@@ -207,12 +207,17 @@ class OpportunityAttachmentSerializer(serializers.ModelSerializer):
         return obj.file.url
 
 class ActivitySerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
+
     class Meta:
         model = models.Activity
         fields = '__all__'
         extra_kwargs = {
             'owner': {'read_only': True},
             'region': {'read_only': True},
+            'created_by': {'read_only': True},
+            'updated_by': {'read_only': True},
         }
 
 
@@ -254,6 +259,12 @@ class ContractSerializer(serializers.ModelSerializer):
         vendor = attrs.get('vendor_company')
         if vendor and vendor.category.code != 'vendor_company':
             raise serializers.ValidationError({'vendor_company': 'Invalid lookup category: vendor_company'})
+        framework_contract = attrs.get('framework_contract')
+        if framework_contract:
+            if not framework_contract.is_framework:
+                raise serializers.ValidationError({'framework_contract': '所属框架合同必须为框架合同'})
+            if self.instance and framework_contract.id == self.instance.id:
+                raise serializers.ValidationError({'framework_contract': '所属框架合同不能为自身'})
         return attrs
 
     def get_receivable_amount(self, obj):

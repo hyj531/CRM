@@ -80,6 +80,11 @@
             {{ region.name || region.code || `ID ${region.id}` }}
           </option>
         </select>
+        <select v-if="isReceivableTab" v-model="receivableUrgentFilter">
+          <option value="">是否重点催收</option>
+          <option value="1">仅重点</option>
+          <option value="0">仅非重点</option>
+        </select>
         <button class="button" @click="applyFilters">搜索</button>
         <button class="button secondary" @click="resetFilters">清除</button>
       </div>
@@ -91,14 +96,6 @@
           <div>{{ listTitle }}</div>
         </div>
         <div class="list-head-actions">
-          <a
-            v-if="isReceivableTab"
-            class="text-link small"
-            href="#"
-            @click.prevent="toggleUrgentOnly"
-          >
-            {{ receivableUrgentOnly ? '显示全部应收' : '只看重点催收' }}
-          </a>
           <button class="button" @click="goCreate">新建合同</button>
           <div class="toolbar-left">
             <span class="toolbar-label">排序方式</span>
@@ -259,7 +256,7 @@ const currentPage = ref(1)
 const pageSize = 10
 const ordering = ref('-signed_at')
 const activeTab = ref('all')
-const receivableUrgentOnly = ref(false)
+const receivableUrgentFilter = ref('')
 const router = useRouter()
 const auth = useAuthStore()
 const canDelete = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.contract?.delete))
@@ -350,13 +347,7 @@ const receivableAmount = (item) => {
 const setTab = (tab) => {
   if (activeTab.value === tab) return
   activeTab.value = tab
-  receivableUrgentOnly.value = false
-  currentPage.value = 1
-  fetchData()
-}
-
-const toggleUrgentOnly = () => {
-  receivableUrgentOnly.value = !receivableUrgentOnly.value
+  receivableUrgentFilter.value = ''
   currentPage.value = 1
   fetchData()
 }
@@ -368,7 +359,9 @@ const buildParams = () => {
     ordering: ordering.value
   }
   if (isReceivableTab.value) params.receivable_only = 1
-  if (isReceivableTab.value && receivableUrgentOnly.value) params.receivable_urgent = 1
+  if (isReceivableTab.value && receivableUrgentFilter.value) {
+    params.receivable_urgent = receivableUrgentFilter.value
+  }
   if (isFrameworkTab.value) params.is_framework = 1
   if (search.value) params.search = search.value
   if (filters.value.status) params.status = filters.value.status
@@ -452,6 +445,7 @@ const goCreate = () => {
 
 const resetFilters = () => {
   search.value = ''
+  receivableUrgentFilter.value = ''
   filters.value = {
     status: '',
     approval_status: '',

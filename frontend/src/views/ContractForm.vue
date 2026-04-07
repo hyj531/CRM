@@ -140,6 +140,15 @@
             <option :value="true">是</option>
           </select>
         </div>
+        <div>
+          <label>所属框架合同</label>
+          <select v-model.number="form.framework_contract" :disabled="form.is_framework">
+            <option :value="null">不选择</option>
+            <option v-for="item in frameworkContracts" :key="item.id" :value="item.id">
+              {{ frameworkLabel(item) }}
+            </option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -334,6 +343,66 @@
         </div>
       </div>
     </div>
+
+    <div v-if="isEdit && form.is_framework" class="card">
+      <div class="section-title">合同明细</div>
+      <div v-if="childContractsError" style="color: #c92a2a; margin-bottom: 8px;">
+        {{ childContractsError }}
+      </div>
+      <div class="table-wrap contract-table-wrap">
+        <table class="table contract-table">
+          <thead>
+            <tr>
+              <th>合同名称</th>
+              <th>合同状态</th>
+              <th>审批状态</th>
+              <th>甲方</th>
+              <th>乙方</th>
+              <th>合同金额</th>
+              <th>回款</th>
+              <th>当前产值</th>
+              <th>应收款</th>
+              <th>签署日期</th>
+              <th>区域</th>
+              <th>负责人</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in childContracts" :key="item.id">
+              <td>
+                <router-link class="link-button" :to="`/contracts/${item.id}`">
+                  {{ item.name || item.contract_no || `合同${item.id}` }}
+                </router-link>
+              </td>
+              <td>
+                <span :class="['badge', statusBadgeClass(item.status)]">{{ statusLabel(item.status) }}</span>
+              </td>
+              <td>
+                <span :class="['badge', approvalBadgeClass(item.approval_status)]">
+                  {{ approvalLabel(item.approval_status) }}
+                </span>
+              </td>
+              <td>{{ item.account_name || item.account || '-' }}</td>
+              <td>{{ vendorName(item.vendor_company) }}</td>
+              <td>{{ formatMoney(item.amount) }}</td>
+              <td>{{ formatMoney(item.paid_total) }}</td>
+              <td>{{ item.current_output ?? '-' }}</td>
+              <td>{{ receivableAmountFor(item) }}</td>
+              <td>{{ item.signed_at || '-' }}</td>
+              <td>{{ item.region_name || '-' }}</td>
+              <td>{{ item.owner_name || item.owner || '-' }}</td>
+              <td>
+                <router-link class="link-button" :to="`/contracts/${item.id}`">详情</router-link>
+              </td>
+            </tr>
+            <tr v-if="!childContracts.length">
+              <td colspan="13" style="color: #888;">暂无合同明细</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -353,6 +422,9 @@ const success = ref('')
 const opportunities = ref([])
 const regions = ref([])
 const users = ref([])
+const frameworkContracts = ref([])
+const childContracts = ref([])
+const childContractsError = ref('')
 const attachments = ref([])
 const attachmentForm = ref({
   file: null,
@@ -402,6 +474,7 @@ const form = ref({
   status: 'draft',
   approval_status: 'pending',
   is_framework: false,
+  framework_contract: null,
   created_by_name: '',
   created_at: '',
   updated_by_name: '',
@@ -434,6 +507,28 @@ const approvalLabel = (value) => {
     rejected: '已驳回'
   }
   return map[value] || value || '-'
+}
+
+const statusBadgeClass = (value) => {
+  if (value === 'active') return 'green'
+  if (value === 'closed') return 'gray'
+  return 'orange'
+}
+
+const approvalBadgeClass = (value) => {
+  if (value === 'approved') return 'green'
+  if (value === 'rejected') return 'gray'
+  return 'orange'
+}
+
+const vendorName = (vendorId) => {
+  const item = lookupOptions.value.vendor_company.find((opt) => String(opt.id) === String(vendorId))
+  return item ? item.name : (vendorId || '-')
+}
+
+const frameworkLabel = (item) => {
+  if (!item) return '-'
+  return item.name || item.contract_no || `合同${item.id}`
 }
 
 const formatMoney = (value) => {
@@ -474,6 +569,32 @@ const fetchRegions = async () => {
 const fetchUsers = async () => {
   const res = await api.get('/users/', { params: { page: 1, page_size: 200, ordering: 'username' } })
   users.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
+const fetchFrameworkContracts = async () => {
+  try {
+    const res = await api.get('/contracts/', { params: { is_framework: 1, page: 1, page_size: 1000 } })
+    frameworkContracts.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+  } catch (err) {
+    frameworkContracts.value = []
+  }
+}
+
+const fetchChildContracts = async () => {
+  if (!isEdit.value || !form.value.is_framework) {
+    childContracts.value = []
+    return
+  }
+  childContractsError.value = ''
+  try {
+    const res = await api.get('/contracts/', {
+      params: { framework_contract: route.params.id, page: 1, page_size: 1000, ordering: '-created_at' }
+    })
+    childContracts.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+  } catch (err) {
+    childContracts.value = []
+    childContractsError.value = '加载合同明细失败'
+  }
 }
 
 let searchTimer = null
@@ -583,6 +704,15 @@ const receivableAmount = computed(() => {
   return Number.isFinite(value) ? value.toFixed(2) : ''
 })
 
+const receivableAmountFor = (item) => {
+  if (!item) return '-'
+  const paidTotal = Number(item.paid_total || 0)
+  const base = item.current_output != null ? Number(item.current_output) : Number(item.amount)
+  if (Number.isNaN(base)) return '-'
+  const value = base - paidTotal
+  return Number.isFinite(value) ? value.toFixed(2) : '-'
+}
+
 const handleAccountFocus = () => {
   if (accountBlurTimer) {
     clearTimeout(accountBlurTimer)
@@ -675,6 +805,7 @@ const loadContract = async () => {
       status: data.status || 'draft',
       approval_status: data.approval_status || 'pending',
       is_framework: Boolean(data.is_framework),
+      framework_contract: data.framework_contract != null ? Number(data.framework_contract) : null,
       created_by_name: data.created_by_name || '',
       created_at: data.created_at || '',
       updated_by_name: data.updated_by_name || '',
@@ -695,6 +826,7 @@ const loadContract = async () => {
     if (!editingPaymentId.value) {
       applyPaymentDefaults()
     }
+    await fetchChildContracts()
   } catch (err) {
     error.value = '加载合同失败，请确认该合同存在且有权限访问'
   }
@@ -863,6 +995,9 @@ const normalizePayload = () => ({
   ...(form.value.region ? { region: Number(form.value.region) } : {}),
   ...(form.value.owner ? { owner: Number(form.value.owner) } : {}),
   is_framework: Boolean(form.value.is_framework),
+  framework_contract: form.value.is_framework
+    ? null
+    : (form.value.framework_contract ? Number(form.value.framework_contract) : null),
   amount: form.value.amount === '' ? null : form.value.amount,
   current_output: form.value.current_output === '' ? null : form.value.current_output,
   final_settlement_amount: form.value.final_settlement_amount === '' ? null : form.value.final_settlement_amount,
@@ -886,8 +1021,14 @@ const save = async () => {
     error.value = '请选择负责人'
     return
   }
-  if (!form.value.amount) {
+  const amount = Number(form.value.amount)
+  const isFramework = Boolean(form.value.is_framework)
+  if (form.value.amount === '' || form.value.amount === null || form.value.amount === undefined) {
     error.value = '合同金额不能为空'
+    return
+  }
+  if (!isFramework && (!Number.isFinite(amount) || amount <= 0)) {
+    error.value = '合同金额必须大于0'
     return
   }
   error.value = ''
@@ -959,6 +1100,7 @@ onMounted(async () => {
   await fetchOpportunities()
   await fetchRegions()
   await fetchUsers()
+  await fetchFrameworkContracts()
   await loadContract()
   await fetchAttachments()
   await fetchPayments()
@@ -988,6 +1130,20 @@ watch(accountQuery, (value) => {
     loadAccounts(query)
   }, 300)
 })
+
+watch(
+  () => form.value.is_framework,
+  (value) => {
+    if (value) {
+      form.value.framework_contract = null
+      if (isEdit.value) {
+        fetchChildContracts()
+      }
+    } else {
+      childContracts.value = []
+    }
+  }
+)
 </script>
 
 <style scoped>

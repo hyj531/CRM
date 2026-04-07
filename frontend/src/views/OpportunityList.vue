@@ -3,29 +3,29 @@
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">商机总数</div>
-        <div class="stat-value">{{ totalCount }}</div>
+      <div class="stat-value">{{ summaryTotalCount }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">转化率</div>
-        <div class="stat-value">{{ conversionRate }}</div>
+      <div class="stat-value">{{ summaryConversionRate }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">预计金额合计</div>
-        <div class="stat-value">{{ totalAmount }}</div>
+      <div class="stat-value">{{ summaryTotalAmount }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">成交数</div>
-        <div class="stat-value">{{ wonCount }}</div>
+      <div class="stat-value">{{ summaryWonCount }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">商机关闭数</div>
-        <div class="stat-value">{{ lostCount }}</div>
+      <div class="stat-value">{{ summaryLostCount }}</div>
       </div>
     </div>
 
     <div class="tabs">
       <button class="tab" :class="{ active: !filters.stage }" @click="setStage('')">
-        全部 ({{ totalCount }})
+        全部 ({{ summaryTotalCount }})
       </button>
       <button
         v-for="s in stages"
@@ -34,7 +34,7 @@
         :class="{ active: filters.stage === s.value }"
         @click="setStage(s.value)"
       >
-        {{ s.label }} ({{ stageCount(s.value) }})
+        {{ s.label }} ({{ summaryStageCount(s.value) }})
       </button>
     </div>
 
@@ -161,6 +161,13 @@ import api from '../api'
 
 const opportunities = ref([])
 const total = ref(0)
+const summary = ref({
+  total_count: 0,
+  total_amount: '0.00',
+  won_count: 0,
+  lost_count: 0,
+  stage_counts: {}
+})
 const router = useRouter()
 const auth = useAuthStore()
 const canDelete = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.opportunity?.delete))
@@ -278,21 +285,40 @@ const fetchData = async () => {
   }
 }
 
+const fetchSummary = async () => {
+  try {
+    const res = await api.get('/opportunities/summary/')
+    summary.value = res.data || {
+      total_count: 0,
+      total_amount: '0.00',
+      won_count: 0,
+      lost_count: 0,
+      stage_counts: {}
+    }
+  } catch (err) {
+    summary.value = {
+      total_count: 0,
+      total_amount: '0.00',
+      won_count: 0,
+      lost_count: 0,
+      stage_counts: {}
+    }
+  }
+}
+
 const totalCount = computed(() => total.value)
-const totalAmount = computed(() => {
-  const sum = opportunities.value.reduce((total, item) => total + (Number(item.expected_amount) || 0), 0)
-  return sum ? sum.toFixed(2) : '0.00'
-})
-const wonCount = computed(() => opportunities.value.filter((item) => item.stage === 'won').length)
-const lostCount = computed(() => opportunities.value.filter((item) => item.stage === 'lost').length)
-const conversionRate = computed(() => {
-  const totalItems = totalCount.value || 0
+const summaryTotalCount = computed(() => Number(summary.value.total_count || 0))
+const summaryTotalAmount = computed(() => Number(summary.value.total_amount || 0).toFixed(2))
+const summaryWonCount = computed(() => Number(summary.value.won_count || 0))
+const summaryLostCount = computed(() => Number(summary.value.lost_count || 0))
+const summaryConversionRate = computed(() => {
+  const totalItems = summaryTotalCount.value || 0
   if (!totalItems) return '0%'
-  const rate = (wonCount.value / totalItems) * 100
+  const rate = (summaryWonCount.value / totalItems) * 100
   return `${rate.toFixed(2)}%`
 })
 
-const stageCount = (stageValue) => opportunities.value.filter((item) => item.stage === stageValue).length
+const summaryStageCount = (stageValue) => Number(summary.value.stage_counts?.[stageValue] || 0)
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const pagedOpportunities = computed(() => {
@@ -400,6 +426,7 @@ onMounted(async () => {
   await fetchRegions()
   await fetchAccounts()
   await fetchUsers()
+  await fetchSummary()
   await fetchData()
 })
 

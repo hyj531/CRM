@@ -80,15 +80,6 @@
             </select>
           </div>
           <div>
-            <label>线索来源</label>
-            <select v-model="opportunity.lead_source">
-              <option :value="null">未设置</option>
-              <option v-for="opt in lookupOptions.lead_source" :key="opt.id" :value="opt.id">
-                {{ opt.name }}
-              </option>
-            </select>
-          </div>
-          <div>
             <label>所属区域</label>
             <select v-model.number="opportunity.region">
               <option :value="null">未设置</option>
@@ -138,8 +129,16 @@
           <textarea v-model="followupForm.description" rows="4"></textarea>
         </div>
         <div style="margin-top: 10px;">
-          <button class="button" :disabled="followupSaving" @click="createFollowup">
-            {{ followupSaving ? '保存中...' : '保存跟进' }}
+          <button class="button" :disabled="followupSaving" @click="saveFollowup">
+            {{ followupSaving ? '保存中...' : (editingActivityId ? '保存修改' : '保存跟进') }}
+          </button>
+          <button
+            v-if="editingActivityId"
+            class="button secondary"
+            style="margin-left: 8px;"
+            @click="cancelEditFollowup"
+          >
+            取消编辑
           </button>
           <span v-if="followupSuccess" style="margin-left: 10px; color: #2b8a3e;">
             {{ followupSuccess }}
@@ -158,17 +157,82 @@
               <th>目标</th>
               <th>时间</th>
               <th>内容</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="item in activities" :key="item.id">
-              <td>{{ item.subject }}</td>
-              <td>{{ item.due_at || '-' }}</td>
+              <td>
+                <button class="link-button" type="button" @click="openFollowupModal(item)">
+                  {{ item.subject }}
+                </button>
+              </td>
+              <td>{{ formatDate(item.due_at) }}</td>
               <td>{{ item.description || '-' }}</td>
+              <td>
+                <button
+                  v-if="canEditActivity"
+                  class="button secondary small"
+                  @click="startEditFollowup(item)"
+                >
+                  编辑
+                </button>
+                <button
+                  v-if="canDeleteActivity"
+                  class="button secondary small"
+                  @click="deleteFollowup(item.id)"
+                >
+                  删除
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
         <div v-else style="color: #888;">暂无跟进明细</div>
+      </div>
+
+      <div v-if="showFollowupModal" class="modal-backdrop">
+        <div class="modal-card">
+          <div class="modal-header">
+            <div class="modal-title">跟进详情</div>
+            <button class="button secondary small" type="button" @click="closeFollowupModal">关闭</button>
+          </div>
+          <div class="form-grid">
+            <div>
+              <label>跟进目标</label>
+              <input v-model="modalForm.subject" :disabled="!canEditActivity" />
+            </div>
+            <div>
+              <label>跟进时间</label>
+              <input v-model="modalForm.due_at" type="datetime-local" :disabled="!canEditActivity" />
+            </div>
+          </div>
+          <div style="margin-top: 10px;">
+            <label>跟进内容</label>
+            <textarea v-model="modalForm.description" rows="4" :disabled="!canEditActivity"></textarea>
+          </div>
+          <div class="detail-meta" style="margin-top: 10px;">
+            <span>创建人：{{ modalActivity?.created_by_name || '-' }}</span>
+            <span>创建日期：{{ formatDate(modalActivity?.created_at) }}</span>
+            <span>更新人：{{ modalActivity?.updated_by_name || '-' }}</span>
+            <span>更新日期：{{ formatDate(modalActivity?.updated_at) }}</span>
+          </div>
+          <div style="margin-top: 12px;">
+            <button
+              v-if="canEditActivity"
+              class="button"
+              type="button"
+              :disabled="modalSaving"
+              @click="saveModalFollowup"
+            >
+              {{ modalSaving ? '保存中...' : '保存' }}
+            </button>
+            <button class="button secondary" type="button" style="margin-left: 8px;" @click="closeFollowupModal">
+              关闭
+            </button>
+            <span v-if="modalError" style="margin-left: 10px; color: #c92a2a;">{{ modalError }}</span>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -281,9 +345,20 @@ const followupForm = ref({
   description: '',
   due_at: toLocalDateTime()
 })
+const editingActivityId = ref(null)
 const followupSaving = ref(false)
 const followupError = ref('')
 const followupSuccess = ref('')
+const showFollowupModal = ref(false)
+const modalActivity = ref(null)
+const modalForm = ref({
+  activity_type: 'internal',
+  subject: '',
+  description: '',
+  due_at: ''
+})
+const modalSaving = ref(false)
+const modalError = ref('')
 const goBack = () => router.back()
 
 const stages = [
@@ -311,6 +386,9 @@ const followupTypes = [
   { value: 'visit', label: '拜访' },
   { value: 'internal', label: '内部穿透' }
 ]
+
+const canEditActivity = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.activity?.update))
+const canDeleteActivity = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.activity?.delete))
 
 const stageLabel = (stage) => {
   const map = {
@@ -444,7 +522,86 @@ const uploadAttachment = async () => {
   }
 }
 
-const createFollowup = async () => {
+const startEditFollowup = (item) => {
+  editingActivityId.value = item.id
+  followupForm.value = {
+    activity_type: item.activity_type || 'internal',
+    subject: item.subject || '',
+    description: item.description || '',
+    due_at: item.due_at ? item.due_at.slice(0, 16) : toLocalDateTime()
+  }
+  followupError.value = ''
+  followupSuccess.value = ''
+}
+
+const cancelEditFollowup = () => {
+  editingActivityId.value = null
+  followupForm.value = { activity_type: 'internal', subject: '', description: '', due_at: toLocalDateTime() }
+  followupError.value = ''
+  followupSuccess.value = ''
+}
+
+const openFollowupModal = (item) => {
+  modalActivity.value = item
+  modalForm.value = {
+    activity_type: item.activity_type || 'internal',
+    subject: item.subject || '',
+    description: item.description || '',
+    due_at: item.due_at ? item.due_at.slice(0, 16) : ''
+  }
+  modalError.value = ''
+  modalSaving.value = false
+  showFollowupModal.value = true
+}
+
+const closeFollowupModal = () => {
+  showFollowupModal.value = false
+  modalActivity.value = null
+  modalForm.value = { activity_type: 'internal', subject: '', description: '', due_at: '' }
+  modalError.value = ''
+  modalSaving.value = false
+}
+
+const saveModalFollowup = async () => {
+  if (!modalActivity.value) return
+  if (!modalForm.value.subject) {
+    modalError.value = '跟进目标不能为空'
+    return
+  }
+  modalError.value = ''
+  modalSaving.value = true
+  try {
+    const payload = {
+      activity_type: modalForm.value.activity_type,
+      subject: modalForm.value.subject,
+      description: modalForm.value.description,
+      opportunity: Number(props.id),
+      due_at: modalForm.value.due_at || null
+    }
+    await api.patch(`/activities/${modalActivity.value.id}/`, payload)
+    await fetchActivities()
+    closeFollowupModal()
+  } catch (err) {
+    const status = err.response?.status
+    if (status === 403) {
+      modalError.value = '无编辑权限'
+    } else {
+      const detail = err.response?.data
+      if (detail && typeof detail === 'object') {
+        const messages = Object.entries(detail)
+          .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join('；') : value}`)
+          .join(' | ')
+        modalError.value = messages || '保存失败，请检查必填项或后端服务'
+      } else {
+        modalError.value = '保存失败，请检查必填项或后端服务'
+      }
+    }
+  } finally {
+    modalSaving.value = false
+  }
+}
+
+const saveFollowup = async () => {
   if (!followupForm.value.subject) {
     followupError.value = '跟进目标不能为空'
     return
@@ -460,9 +617,15 @@ const createFollowup = async () => {
       opportunity: Number(props.id),
       due_at: followupForm.value.due_at || null
     }
-    await api.post('/activities/', payload)
+    if (editingActivityId.value) {
+      await api.patch(`/activities/${editingActivityId.value}/`, payload)
+      followupSuccess.value = '跟进已更新'
+      editingActivityId.value = null
+    } else {
+      await api.post('/activities/', payload)
+      followupSuccess.value = '跟进已保存'
+    }
     followupForm.value = { activity_type: 'internal', subject: '', description: '', due_at: toLocalDateTime() }
-    followupSuccess.value = '跟进已保存'
     await fetchActivities()
   } catch (err) {
     const status = err.response?.status
@@ -481,6 +644,32 @@ const createFollowup = async () => {
     }
   } finally {
     followupSaving.value = false
+  }
+}
+
+const deleteFollowup = async (id) => {
+  if (!confirm('确认删除该跟进记录？')) return
+  followupError.value = ''
+  followupSuccess.value = ''
+  try {
+    await api.delete(`/activities/${id}/`)
+    if (editingActivityId.value === id) {
+      cancelEditFollowup()
+    }
+    followupSuccess.value = '跟进已删除'
+    await fetchActivities()
+  } catch (err) {
+    const status = err.response?.status
+    if (status === 403) {
+      followupError.value = '无删除权限'
+    } else {
+      const detail = err.response?.data
+      if (detail && typeof detail === 'object') {
+        followupError.value = detail.detail || '删除失败，请检查权限或后端服务'
+      } else {
+        followupError.value = '删除失败，请检查权限或后端服务'
+      }
+    }
   }
 }
 
@@ -531,3 +720,39 @@ onMounted(async () => {
   await fetchAttachments()
 })
 </script>
+
+<style scoped>
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px 20px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+</style>
