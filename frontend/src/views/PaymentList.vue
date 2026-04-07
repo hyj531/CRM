@@ -26,6 +26,11 @@
           <option value="partial">部分回款</option>
           <option value="paid">已回款</option>
         </select>
+        <div class="filter-range">
+          <input v-model="paidAtStart" type="date" />
+          <span class="range-split">至</span>
+          <input v-model="paidAtEnd" type="date" />
+        </div>
         <button class="button" @click="applyFilters">搜索</button>
         <button class="button secondary" @click="resetFilters">清除</button>
       </div>
@@ -121,6 +126,8 @@ const auth = useAuthStore()
 const canDelete = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.payment?.delete))
 const search = ref('')
 const statusFilter = ref('')
+const paidAtStart = ref('')
+const paidAtEnd = ref('')
 const currentPage = ref(1)
 const pageSize = 10
 const ordering = ref('-paid_at')
@@ -177,6 +184,8 @@ const buildParams = () => {
   }
   if (search.value) params.search = search.value
   if (statusFilter.value) params.status = statusFilter.value
+  if (paidAtStart.value) params.paid_at_start = paidAtStart.value
+  if (paidAtEnd.value) params.paid_at_end = paidAtEnd.value
   return params
 }
 
@@ -227,6 +236,8 @@ const applyFilters = () => {
 const resetFilters = () => {
   search.value = ''
   statusFilter.value = ''
+  paidAtStart.value = ''
+  paidAtEnd.value = ''
   applyFilters()
 }
 
@@ -265,3 +276,15 @@ watch([statusFilter, ordering], () => {
   applyFilters()
 })
 </script>
+
+<style scoped>
+.filter-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.range-split {
+  color: #94a3b8;
+}
+</style>

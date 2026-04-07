@@ -200,6 +200,10 @@
           <label>到期日期</label>
           <input v-model="form.end_date" type="date" />
         </div>
+        <div style="grid-column: 1 / -1;">
+          <label>备注</label>
+          <textarea v-model="form.remark" rows="3"></textarea>
+        </div>
       </div>
     </div>
 
@@ -475,6 +479,7 @@ const form = ref({
   approval_status: 'pending',
   is_framework: false,
   framework_contract: null,
+  remark: '',
   created_by_name: '',
   created_at: '',
   updated_by_name: '',
@@ -806,6 +811,7 @@ const loadContract = async () => {
       approval_status: data.approval_status || 'pending',
       is_framework: Boolean(data.is_framework),
       framework_contract: data.framework_contract != null ? Number(data.framework_contract) : null,
+      remark: data.remark || '',
       created_by_name: data.created_by_name || '',
       created_at: data.created_at || '',
       updated_by_name: data.updated_by_name || '',
@@ -998,6 +1004,7 @@ const normalizePayload = () => ({
   framework_contract: form.value.is_framework
     ? null
     : (form.value.framework_contract ? Number(form.value.framework_contract) : null),
+  remark: form.value.remark || '',
   amount: form.value.amount === '' ? null : form.value.amount,
   current_output: form.value.current_output === '' ? null : form.value.current_output,
   final_settlement_amount: form.value.final_settlement_amount === '' ? null : form.value.final_settlement_amount,

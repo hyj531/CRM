@@ -474,6 +474,7 @@ class Contract(OwnedRegionModel):
         'self', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='child_contracts', verbose_name='所属框架合同'
     )
+    remark = models.TextField('备注', null=True, blank=True)
     signed_at = models.DateField('签署日期', null=True, blank=True)
     start_date = models.DateField('生效日期', null=True, blank=True)
     end_date = models.DateField('到期日期', null=True, blank=True)

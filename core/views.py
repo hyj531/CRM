@@ -464,6 +464,10 @@ class ContractViewSet(RegionScopedViewSet):
         'owner', 'region', 'is_framework', 'framework_contract'
     ]
     search_fields = ['contract_no', 'name', 'account__full_name', 'account__short_name']
+    ordering_fields = [
+        'created_at', 'signed_at', 'amount',
+        'account__full_name', 'account__short_name'
+    ]
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -647,6 +651,16 @@ class PaymentViewSet(RegionScopedViewSet):
     serializer_class = serializers.PaymentSerializer
     module_code = models.RolePermission.MODULE_PAYMENT
     filterset_fields = ['status', 'contract', 'invoice', 'owner', 'region']
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        start = self.request.query_params.get('paid_at_start')
+        end = self.request.query_params.get('paid_at_end')
+        if start:
+            queryset = queryset.filter(paid_at__gte=start)
+        if end:
+            queryset = queryset.filter(paid_at__lte=end)
+        return queryset
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError

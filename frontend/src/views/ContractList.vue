@@ -104,6 +104,7 @@
               <option value="-signed_at">最新签署</option>
               <option value="-amount">合同金额高→低</option>
               <option value="amount">合同金额低→高</option>
+              <option value="account__full_name,account__short_name">按甲方</option>
             </select>
           </div>
           <button
