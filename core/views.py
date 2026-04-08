@@ -262,6 +262,24 @@ class ContactViewSet(RegionScopedViewSet):
     filterset_fields = ['account', 'is_key_person', 'owner', 'region']
     search_fields = ['name', 'email', 'phone']
 
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+
+        kwargs = {'created_by': self.request.user, 'updated_by': self.request.user}
+        if 'owner' in serializer.fields and 'owner' not in serializer.validated_data:
+            kwargs['owner'] = self.request.user
+        if 'region' in serializer.fields and 'region' not in serializer.validated_data:
+            region = self.request.user.region
+            if region is None:
+                region_field = serializer.Meta.model._meta.get_field('region')
+                if not getattr(region_field, 'null', False):
+                    raise ValidationError({'region': '请先为当前用户设置所属区域。'})
+            kwargs['region'] = region
+        serializer.save(**kwargs)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
     def destroy(self, request, *args, **kwargs):
         from django.db.models.deletion import ProtectedError
 

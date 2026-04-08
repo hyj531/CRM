@@ -81,6 +81,8 @@ class AccountSerializer(serializers.ModelSerializer):
 class ContactSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source='owner.username', read_only=True)
     region_name = serializers.CharField(source='region.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
 
     class Meta:
         model = models.Contact
@@ -88,6 +90,8 @@ class ContactSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'owner': {'required': False},
             'region': {'required': False},
+            'created_by': {'read_only': True},
+            'updated_by': {'read_only': True},
         }
 
 

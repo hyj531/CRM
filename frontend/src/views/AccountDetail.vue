@@ -161,7 +161,11 @@
             <div v-if="contacts.length">
               <div v-for="item in contacts" :key="item.id" class="list-row">
                 <div>
-                  <div class="list-title">{{ item.name }}</div>
+                  <div class="list-title">
+                    <button class="link-button" type="button" @click="openContactModal(item)">
+                      {{ item.name }}
+                    </button>
+                  </div>
                   <div class="list-meta">
                     <span>职位：{{ item.title || '-' }}</span>
                     <span>电话：{{ item.phone || '-' }}</span>
@@ -177,6 +181,69 @@
             <div v-else style="padding: 10px 0; color: #888;">暂无联系人</div>
           </div>
         </div>
+    </div>
+
+    <div v-if="showContactModal" class="modal-backdrop">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title">联系人详情</div>
+          <button class="button secondary small" type="button" @click="closeContactModal">关闭</button>
+        </div>
+        <div class="form-grid">
+          <div>
+            <label>姓名</label>
+            <input v-model="modalForm.name" :disabled="!canEditContact" />
+          </div>
+          <div>
+            <label>职位</label>
+            <input v-model="modalForm.title" :disabled="!canEditContact" />
+          </div>
+          <div>
+            <label>电话</label>
+            <input v-model="modalForm.phone" :disabled="!canEditContact" />
+          </div>
+          <div>
+            <label>邮箱</label>
+            <input v-model="modalForm.email" :disabled="!canEditContact" />
+          </div>
+          <div>
+            <label>是否关键人</label>
+            <select v-model="modalForm.is_key_person" :disabled="!canEditContact">
+              <option :value="false">否</option>
+              <option :value="true">是</option>
+            </select>
+          </div>
+          <div>
+            <label>偏好/标签</label>
+            <input v-model="modalForm.preference" :disabled="!canEditContact" />
+          </div>
+        </div>
+        <div style="margin-top: 10px;">
+          <label>备注</label>
+          <textarea v-model="modalForm.remark" rows="3" :disabled="!canEditContact"></textarea>
+        </div>
+        <div class="detail-meta" style="margin-top: 10px;">
+          <span>创建人：{{ modalContact?.created_by_name || '-' }}</span>
+          <span>创建日期：{{ formatDate(modalContact?.created_at) }}</span>
+          <span>更新人：{{ modalContact?.updated_by_name || '-' }}</span>
+          <span>更新日期：{{ formatDate(modalContact?.updated_at) }}</span>
+        </div>
+        <div style="margin-top: 12px;">
+          <button
+            v-if="canEditContact"
+            class="button"
+            type="button"
+            :disabled="modalSaving"
+            @click="saveContactModal"
+          >
+            {{ modalSaving ? '保存中...' : '保存' }}
+          </button>
+          <button class="button secondary" type="button" style="margin-left: 8px;" @click="closeContactModal">
+            关闭
+          </button>
+          <span v-if="modalError" style="margin-left: 10px; color: #c92a2a;">{{ modalError }}</span>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -203,6 +270,19 @@ const contactError = ref('')
 const contactSuccess = ref('')
 const contactSaving = ref(false)
 const editingContactId = ref(null)
+const showContactModal = ref(false)
+const modalContact = ref(null)
+const modalForm = ref({
+  name: '',
+  title: '',
+  phone: '',
+  email: '',
+  is_key_person: false,
+  preference: '',
+  remark: ''
+})
+const modalSaving = ref(false)
+const modalError = ref('')
 const regions = ref([])
 const users = ref([])
 const audit = ref({
@@ -454,6 +534,70 @@ const cancelEditContact = () => {
   resetContactForm()
 }
 
+const openContactModal = (item) => {
+  if (!item) return
+  modalContact.value = item
+  modalForm.value = {
+    name: item.name || '',
+    title: item.title || '',
+    phone: item.phone || '',
+    email: item.email || '',
+    is_key_person: Boolean(item.is_key_person),
+    preference: item.preference || '',
+    remark: item.remark || ''
+  }
+  modalError.value = ''
+  modalSaving.value = false
+  showContactModal.value = true
+}
+
+const closeContactModal = () => {
+  showContactModal.value = false
+  modalContact.value = null
+  modalForm.value = {
+    name: '',
+    title: '',
+    phone: '',
+    email: '',
+    is_key_person: false,
+    preference: '',
+    remark: ''
+  }
+  modalError.value = ''
+  modalSaving.value = false
+}
+
+const saveContactModal = async () => {
+  if (!modalContact.value) return
+  if (!modalForm.value.name) {
+    modalError.value = '联系人姓名不能为空'
+    return
+  }
+  modalError.value = ''
+  modalSaving.value = true
+  try {
+    const payload = {
+      ...modalForm.value,
+      account: modalContact.value.account || accountId.value
+    }
+    await api.patch(`/contacts/${modalContact.value.id}/`, payload)
+    await fetchContacts()
+    closeContactModal()
+  } catch (err) {
+    const detail = err.response?.data
+    if (detail && typeof detail === 'object') {
+      const messages = Object.entries(detail)
+        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join('；') : value}`)
+        .join(' | ')
+      modalError.value = messages || '保存失败，请检查必填项或后端服务'
+    } else {
+      modalError.value = '保存失败，请检查必填项或后端服务'
+    }
+  } finally {
+    modalSaving.value = false
+  }
+}
+
 onMounted(async () => {
   if (!auth.user) {
     await auth.fetchMe()
@@ -508,5 +652,36 @@ watch(accountId, async (val) => {
   padding: 6px 8px;
   border-radius: 7px;
   font-size: 13px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+
+.modal-card {
+  width: min(720px, calc(100% - 32px));
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.18);
+  padding: 18px 20px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
 }
 </style>

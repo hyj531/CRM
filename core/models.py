@@ -186,6 +186,14 @@ class Account(OwnedRegionModel):
 class Contact(OwnedRegionModel):
     account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='contacts', verbose_name='所属客户')
     name = models.CharField('姓名', max_length=200)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='contact_created_items', verbose_name='创建人'
+    )
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='contact_updated_items', verbose_name='更新人'
+    )
     email = models.EmailField('邮箱', blank=True)
     phone = models.CharField('电话', max_length=50, blank=True)
     title = models.CharField('职位', max_length=100, blank=True)
