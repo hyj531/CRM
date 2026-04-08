@@ -84,6 +84,10 @@
           <label>回款编号/备注</label>
           <input v-model="form.reference" />
         </div>
+        <div style="grid-column: 1 / -1;">
+          <label>回款说明</label>
+          <textarea v-model="form.note" rows="3"></textarea>
+        </div>
       </div>
     </div>
   </div>
@@ -116,7 +120,8 @@ const form = ref({
   amount: null,
   status: 'planned',
   paid_at: '',
-  reference: ''
+  reference: '',
+  note: ''
 })
 
 const paymentId = computed(() => {
@@ -203,7 +208,8 @@ const fetchPayment = async () => {
     amount: data.amount != null ? Number(data.amount) : null,
     status: data.status || 'planned',
     paid_at: data.paid_at || '',
-    reference: data.reference || ''
+    reference: data.reference || '',
+    note: data.note || ''
   }
   createdByName.value = data.created_by_name || ''
   const ct = contracts.value.find((c) => c.id === data.contract)

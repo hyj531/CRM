@@ -717,13 +717,19 @@ a {
 }
 
 .contract-filters {
+  overflow-x: visible;
   overflow-y: visible;
+  flex-wrap: wrap;
 }
 
-.account-filters .filter-left,
+.account-filters .filter-left {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
 .payment-filters .filter-left,
 .contract-filters .filter-left {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
 }
 

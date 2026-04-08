@@ -149,9 +149,10 @@
           </div>
           <div class="filter-actions" style="margin-top: 12px;">
             <button class="button" :disabled="contactSaving" @click="saveContact">
-              {{ contactSaving ? '保存中...' : '添加联系人' }}
+              {{ contactSaving ? '保存中...' : (editingContactId ? '保存修改' : '添加联系人') }}
             </button>
             <button class="button secondary" @click="resetContactForm">清空</button>
+            <button v-if="editingContactId" class="button secondary" @click="cancelEditContact">取消编辑</button>
           </div>
           <div v-if="contactError" style="color: #c92a2a; margin-top: 8px;">{{ contactError }}</div>
           <div v-if="contactSuccess" style="color: #2b8a3e; margin-top: 8px;">{{ contactSuccess }}</div>
@@ -167,6 +168,9 @@
                     <span>邮箱：{{ item.email || '-' }}</span>
                     <span>关键人：{{ item.is_key_person ? '是' : '否' }}</span>
                   </div>
+                </div>
+                <div v-if="canEditContact">
+                  <button class="button secondary" @click="startEditContact(item)">编辑</button>
                 </div>
               </div>
             </div>
@@ -198,6 +202,7 @@ const contacts = ref([])
 const contactError = ref('')
 const contactSuccess = ref('')
 const contactSaving = ref(false)
+const editingContactId = ref(null)
 const regions = ref([])
 const users = ref([])
 const audit = ref({
@@ -241,6 +246,7 @@ const accountId = computed(() => {
 })
 
 const isNew = computed(() => !accountId.value)
+const canEditContact = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.contact?.update))
 
 const goBack = () => {
   router.push('/accounts')
@@ -383,6 +389,7 @@ const resetContactForm = () => {
     preference: '',
     remark: ''
   }
+  editingContactId.value = null
   contactError.value = ''
   contactSuccess.value = ''
 }
@@ -401,8 +408,14 @@ const saveContact = async () => {
       ...contactForm.value,
       account: accountId.value
     }
-    await api.post('/contacts/', payload)
-    contactSuccess.value = '联系人已添加'
+    if (editingContactId.value) {
+      await api.patch(`/contacts/${editingContactId.value}/`, payload)
+      contactSuccess.value = '联系人已更新'
+      editingContactId.value = null
+    } else {
+      await api.post('/contacts/', payload)
+      contactSuccess.value = '联系人已添加'
+    }
     resetContactForm()
     await fetchContacts()
   } catch (err) {
@@ -418,6 +431,27 @@ const saveContact = async () => {
   } finally {
     contactSaving.value = false
   }
+}
+
+const startEditContact = (item) => {
+  if (!item) return
+  editingContactId.value = item.id
+  contactError.value = ''
+  contactSuccess.value = ''
+  contactForm.value = {
+    name: item.name || '',
+    title: item.title || '',
+    phone: item.phone || '',
+    email: item.email || '',
+    is_key_person: Boolean(item.is_key_person),
+    preference: item.preference || '',
+    remark: item.remark || ''
+  }
+}
+
+const cancelEditContact = () => {
+  editingContactId.value = null
+  resetContactForm()
 }
 
 onMounted(async () => {

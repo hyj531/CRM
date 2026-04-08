@@ -561,6 +561,7 @@ class Payment(OwnedRegionModel):
     paid_at = models.DateField('回款日期', null=True, blank=True)
     status = models.CharField('回款状态', max_length=20, choices=STATUSES, default='planned')
     reference = models.CharField('回款编号/备注', max_length=100, blank=True)
+    note = models.TextField('回款说明', blank=True)
 
     class Meta:
         verbose_name = '回款'

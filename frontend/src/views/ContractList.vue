@@ -29,64 +29,75 @@
 
     <div class="filter-bar contract-filters">
       <div class="filter-left">
-        <input v-model="search" placeholder="搜索合同编号/名称" @keyup.enter="applyFilters" />
-        <select v-model="filters.status">
-          <option value="">合同状态</option>
-          <option value="draft">草稿</option>
-          <option value="signed">已签署</option>
-          <option value="active">履行中</option>
-          <option value="closed">已关闭</option>
-        </select>
-        <select v-model="filters.approval_status">
-          <option value="">审批状态</option>
-          <option value="pending">待审批</option>
-          <option value="approved">已通过</option>
-          <option value="rejected">已驳回</option>
-        </select>
-        <div class="filter-range">
-          <input v-model="filters.signed_at_start" type="date" />
-          <span class="range-split">至</span>
-          <input v-model="filters.signed_at_end" type="date" />
-        </div>
-        <div class="filter-autocomplete">
-          <input
-            v-model="accountSearch"
-            placeholder="输入甲方名称/简称"
-            @focus="showAccountDropdown = true"
-            @input="showAccountDropdown = true"
-            @blur="hideAccountDropdown"
-          />
-          <div v-if="showAccountDropdown && accountSearch" class="filter-suggestions">
-            <div
-              v-for="acc in filteredAccounts"
-              :key="acc.id"
-              class="filter-suggestion"
-              @mousedown.prevent="selectFilterAccount(acc)"
-            >
-              {{ accountLabel(acc) }}
+        <div class="filter-line">
+          <input v-model="search" class="filter-search" placeholder="搜索合同编号/名称" @keyup.enter="applyFilters" />
+          <select v-model="filters.status">
+            <option value="">合同状态</option>
+            <option value="draft">草稿</option>
+            <option value="signed">已签署</option>
+            <option value="active">履行中</option>
+            <option value="closed">已关闭</option>
+          </select>
+          <select v-model="filters.approval_status">
+            <option value="">审批状态</option>
+            <option value="pending">待审批</option>
+            <option value="approved">已通过</option>
+            <option value="rejected">已驳回</option>
+          </select>
+          <div class="filter-autocomplete">
+            <input
+              v-model="accountSearch"
+              placeholder="输入甲方名称/简称"
+              @focus="showAccountDropdown = true"
+              @input="showAccountDropdown = true"
+              @blur="hideAccountDropdown"
+            />
+            <div v-if="showAccountDropdown && accountSearch" class="filter-suggestions">
+              <div
+                v-for="acc in filteredAccounts"
+                :key="acc.id"
+                class="filter-suggestion"
+                @mousedown.prevent="selectFilterAccount(acc)"
+              >
+                {{ accountLabel(acc) }}
+              </div>
+              <div v-if="!filteredAccounts.length" class="filter-empty">无匹配客户</div>
             </div>
-            <div v-if="!filteredAccounts.length" class="filter-empty">无匹配客户</div>
           </div>
+          <select v-model="filters.vendor_company">
+            <option value="">乙方公司</option>
+            <option v-for="opt in lookupOptions.vendor_company" :key="opt.id" :value="String(opt.id)">
+              {{ opt.name }}
+            </option>
+          </select>
+          <select v-model="filters.region">
+            <option value="">区域</option>
+            <option v-for="region in regions" :key="region.id" :value="String(region.id)">
+              {{ region.name || region.code || `ID ${region.id}` }}
+            </option>
+          </select>
         </div>
-        <select v-model="filters.vendor_company">
-          <option value="">乙方公司</option>
-          <option v-for="opt in lookupOptions.vendor_company" :key="opt.id" :value="String(opt.id)">
-            {{ opt.name }}
-          </option>
-        </select>
-        <select v-model="filters.region">
-          <option value="">区域</option>
-          <option v-for="region in regions" :key="region.id" :value="String(region.id)">
-            {{ region.name || region.code || `ID ${region.id}` }}
-          </option>
-        </select>
-        <select v-if="isReceivableTab" v-model="receivableUrgentFilter">
-          <option value="">是否重点催收</option>
-          <option value="1">仅重点</option>
-          <option value="0">仅非重点</option>
-        </select>
-        <button class="button" @click="applyFilters">搜索</button>
-        <button class="button secondary" @click="resetFilters">清除</button>
+        <div class="filter-line">
+          <div class="filter-range">
+            <span class="filter-label">签署日期</span>
+            <input v-model="filters.signed_at_start" type="date" />
+            <span class="range-split">至</span>
+            <input v-model="filters.signed_at_end" type="date" />
+          </div>
+          <div class="filter-range">
+            <span class="filter-label">回款日期</span>
+            <input v-model="filters.paid_at_start" type="date" />
+            <span class="range-split">至</span>
+            <input v-model="filters.paid_at_end" type="date" />
+          </div>
+          <select v-if="isReceivableTab" v-model="receivableUrgentFilter">
+            <option value="">是否重点催收</option>
+            <option value="1">仅重点</option>
+            <option value="0">仅非重点</option>
+          </select>
+          <button class="button" @click="applyFilters">搜索</button>
+          <button class="button secondary" @click="resetFilters">清除</button>
+        </div>
       </div>
     </div>
 
@@ -244,7 +255,9 @@ const filters = ref({
   vendor_company: '',
   region: '',
   signed_at_start: '',
-  signed_at_end: ''
+  signed_at_end: '',
+  paid_at_start: '',
+  paid_at_end: ''
 })
 const lookupOptions = ref({
   vendor_company: []
@@ -372,6 +385,8 @@ const buildParams = () => {
   if (filters.value.region) params.region = filters.value.region
   if (filters.value.signed_at_start) params.signed_at_start = filters.value.signed_at_start
   if (filters.value.signed_at_end) params.signed_at_end = filters.value.signed_at_end
+  if (filters.value.paid_at_start) params.paid_at_start = filters.value.paid_at_start
+  if (filters.value.paid_at_end) params.paid_at_end = filters.value.paid_at_end
   return params
 }
 
@@ -454,7 +469,9 @@ const resetFilters = () => {
     vendor_company: '',
     region: '',
     signed_at_start: '',
-    signed_at_end: ''
+    signed_at_end: '',
+    paid_at_start: '',
+    paid_at_end: ''
   }
   applyFilters()
 }
@@ -543,10 +560,48 @@ watch(accountSearch, (val) => {
   position: relative;
 }
 
+.filter-left {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.filter-line {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filter-line input,
+.filter-line select {
+  width: 160px;
+  flex: 0 0 auto;
+}
+
+.filter-line input[type="date"] {
+  width: 140px;
+}
+
+.filter-line .filter-search {
+  width: 220px;
+}
+
+.filter-line .filter-autocomplete input {
+  width: 200px;
+}
+
 .filter-range {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.filter-label {
+  color: #64748b;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .range-split {

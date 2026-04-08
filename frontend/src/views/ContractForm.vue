@@ -279,6 +279,10 @@
             <label>回款时间</label>
             <input v-model="paymentForm.paid_at" type="date" />
           </div>
+          <div style="grid-column: 1 / -1;">
+            <label>回款说明</label>
+            <textarea v-model="paymentForm.note" rows="3"></textarea>
+          </div>
           <div>
             <label>所属区域</label>
             <select v-model.number="paymentForm.region">
@@ -318,16 +322,17 @@
             <thead>
               <tr>
                 <th>回款金额</th>
-                <th>回款时间</th>
-                <th>状态</th>
-                <th>所属区域</th>
-                <th>负责人</th>
-                <th>录入人</th>
-                <th>时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
+              <th>回款时间</th>
+              <th>状态</th>
+              <th>所属区域</th>
+              <th>负责人</th>
+              <th>录入人</th>
+              <th>回款说明</th>
+              <th>时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
               <tr v-for="item in payments" :key="item.id">
                 <td>{{ item.amount }}</td>
                 <td>{{ item.paid_at || '-' }}</td>
@@ -335,6 +340,7 @@
                 <td>{{ item.region_name || item.region || '-' }}</td>
                 <td>{{ item.owner_name || item.owner || '-' }}</td>
                 <td>{{ item.created_by_name || item.created_by || '-' }}</td>
+                <td>{{ item.note || '-' }}</td>
                 <td>{{ item.created_at || '-' }}</td>
                 <td>
                   <button class="button secondary" @click="startEditPayment(item)">编辑</button>
@@ -440,6 +446,7 @@ const payments = ref([])
 const paymentForm = ref({
   amount: null,
   paid_at: '',
+  note: '',
   region: null,
   owner: null
 })
@@ -691,6 +698,7 @@ const resetPaymentForm = () => {
   paymentForm.value = {
     amount: null,
     paid_at: '',
+    note: '',
     region: form.value.region != null ? Number(form.value.region) : null,
     owner: form.value.owner != null ? Number(form.value.owner) : null
   }
@@ -895,6 +903,7 @@ const startEditPayment = (item) => {
   paymentForm.value = {
     amount: item.amount != null ? Number(item.amount) : null,
     paid_at: item.paid_at || '',
+    note: item.note || '',
     region: item.region != null ? Number(item.region) : (form.value.region != null ? Number(form.value.region) : null),
     owner: item.owner != null ? Number(item.owner) : (form.value.owner != null ? Number(form.value.owner) : null)
   }
@@ -930,6 +939,7 @@ const savePayment = async () => {
       const payload = {
         amount: Number(paymentForm.value.amount),
         paid_at: paymentForm.value.paid_at || null,
+        note: paymentForm.value.note || '',
         region: Number(paymentForm.value.region),
         owner: Number(paymentForm.value.owner)
       }
@@ -942,6 +952,7 @@ const savePayment = async () => {
         contract: Number(route.params.id),
         amount: Number(paymentForm.value.amount),
         paid_at: paymentForm.value.paid_at || null,
+        note: paymentForm.value.note || '',
         region: Number(paymentForm.value.region),
         owner: Number(paymentForm.value.owner),
         status: 'paid'

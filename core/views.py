@@ -545,15 +545,22 @@ class ContractViewSet(RegionScopedViewSet):
         from django.db.models.functions import Coalesce
 
         queryset = self.filter_queryset(self.get_queryset())
+        paid_at_start = request.query_params.get('paid_at_start')
+        paid_at_end = request.query_params.get('paid_at_end')
 
         totals = queryset.aggregate(
             contract_total=Coalesce(Sum('amount'), Value(0), output_field=DecimalField(max_digits=12, decimal_places=2)),
         )
 
+        paid_query = models.Payment.objects.filter(contract_id__in=queryset.values('id'))
+        if paid_at_start:
+            paid_query = paid_query.filter(paid_at__gte=paid_at_start)
+        if paid_at_end:
+            paid_query = paid_query.filter(paid_at__lte=paid_at_end)
+
         paid_totals = {
             item['contract_id']: item['total']
-            for item in models.Payment.objects.filter(contract_id__in=queryset.values('id'))
-            .values('contract_id')
+            for item in paid_query.values('contract_id')
             .annotate(total=Coalesce(
                 Sum('amount'),
                 Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
