@@ -541,12 +541,16 @@ class ContractViewSet(RegionScopedViewSet):
     @action(detail=False, methods=['get'])
     def summary(self, request):
         from decimal import Decimal
+        from django.http import QueryDict
         from django.db.models import DecimalField, Sum, Value
         from django.db.models.functions import Coalesce
 
         queryset = self.filter_queryset(self.get_queryset())
         paid_at_start = request.query_params.get('paid_at_start')
         paid_at_end = request.query_params.get('paid_at_end')
+        region_param = request.query_params.get('region')
+        signed_at_start = request.query_params.get('signed_at_start')
+        signed_at_end = request.query_params.get('signed_at_end')
 
         totals = queryset.aggregate(
             contract_total=Coalesce(Sum('amount'), Value(0), output_field=DecimalField(max_digits=12, decimal_places=2)),
@@ -576,9 +580,41 @@ class ContractViewSet(RegionScopedViewSet):
                 continue
             receivable_total += base - (paid_totals.get(item['id']) or Decimal('0'))
 
+        # Paid total should ignore contract region filter and only apply signed_at when provided.
+        original_get = request._request.GET
+        try:
+            query_copy = QueryDict(mutable=True)
+            query_copy.update(original_get)
+            if 'region' in query_copy:
+                query_copy.pop('region')
+            if not signed_at_start and 'signed_at_start' in query_copy:
+                query_copy.pop('signed_at_start')
+            if not signed_at_end and 'signed_at_end' in query_copy:
+                query_copy.pop('signed_at_end')
+            request._request.GET = query_copy
+            paid_contract_queryset = self.filter_queryset(self.get_queryset())
+        finally:
+            request._request.GET = original_get
+
+        paid_total_query = models.Payment.objects.filter(contract_id__in=paid_contract_queryset.values('id'))
+        if paid_at_start:
+            paid_total_query = paid_total_query.filter(paid_at__gte=paid_at_start)
+        if paid_at_end:
+            paid_total_query = paid_total_query.filter(paid_at__lte=paid_at_end)
+        if region_param:
+            paid_total_query = paid_total_query.filter(region=region_param)
+
+        paid_total_sum_scoped = paid_total_query.aggregate(
+            total=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        ).get('total') or Decimal('0')
+
         return Response({
             'contract_total': totals.get('contract_total') or 0,
-            'paid_total': paid_total_sum,
+            'paid_total': paid_total_sum_scoped,
             'receivable_total': receivable_total
         })
 
@@ -659,6 +695,33 @@ class PaymentViewSet(RegionScopedViewSet):
     module_code = models.RolePermission.MODULE_PAYMENT
     filterset_fields = ['status', 'contract', 'invoice', 'owner', 'region']
 
+    def list(self, request, *args, **kwargs):
+        from django.db.models import DecimalField, Sum, Value
+        from django.db.models.functions import Coalesce
+
+        queryset = self.filter_queryset(self.get_queryset())
+        total_amount = queryset.aggregate(
+            total=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        ).get('total') or 0
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            response.data['total_amount'] = total_amount
+            return response
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'count': queryset.count(),
+            'results': serializer.data,
+            'total_amount': total_amount
+        })
+
     def filter_queryset(self, queryset):
         queryset = super().filter_queryset(queryset)
         start = self.request.query_params.get('paid_at_start')
@@ -694,6 +757,25 @@ class PaymentViewSet(RegionScopedViewSet):
             return super().destroy(request, *args, **kwargs)
         except ProtectedError:
             return Response({'detail': '该回款已被关联，无法删除。'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        from django.db.models import DecimalField, Sum, Value, Count
+        from django.db.models.functions import Coalesce
+
+        queryset = self.filter_queryset(self.get_queryset())
+        totals = queryset.aggregate(
+            total_amount=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            total_count=Count('id')
+        )
+        return Response({
+            'total_amount': totals.get('total_amount') or 0,
+            'total_count': totals.get('total_count') or 0
+        })
 
 
 @api_view(['GET'])

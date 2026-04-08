@@ -26,6 +26,18 @@
           <option value="partial">部分回款</option>
           <option value="paid">已回款</option>
         </select>
+        <select v-model="regionFilter">
+          <option value="">所属区域</option>
+          <option v-for="region in regions" :key="region.id" :value="String(region.id)">
+            {{ region.name || region.code || `ID ${region.id}` }}
+          </option>
+        </select>
+        <select v-model="ownerFilter">
+          <option value="">负责人</option>
+          <option v-for="u in users" :key="u.id" :value="String(u.id)">
+            {{ u.username || u.email || `ID ${u.id}` }}
+          </option>
+        </select>
         <div class="filter-range">
           <input v-model="paidAtStart" type="date" />
           <span class="range-split">至</span>
@@ -120,6 +132,12 @@ import api from '../api'
 
 const payments = ref([])
 const total = ref(0)
+const summary = ref({
+  total_amount: 0,
+  total_count: 0
+})
+const regions = ref([])
+const users = ref([])
 const contracts = ref([])
 const accounts = ref([])
 const error = ref('')
@@ -128,6 +146,8 @@ const auth = useAuthStore()
 const canDelete = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.payment?.delete))
 const search = ref('')
 const statusFilter = ref('')
+const regionFilter = ref('')
+const ownerFilter = ref('')
 const paidAtStart = ref('')
 const paidAtEnd = ref('')
 const currentPage = ref(1)
@@ -144,10 +164,7 @@ const statusLabel = (value) => {
 }
 
 const totalCount = computed(() => total.value)
-const totalAmount = computed(() => {
-  const sum = payments.value.reduce((total, item) => total + (Number(item.amount) || 0), 0)
-  return sum ? sum.toFixed(2) : '0.00'
-})
+const totalAmount = computed(() => Number(summary.value.total_amount || 0).toFixed(2))
 const paidCount = computed(() => payments.value.filter((item) => item.status === 'paid').length)
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
@@ -186,6 +203,8 @@ const buildParams = () => {
   }
   if (search.value) params.search = search.value
   if (statusFilter.value) params.status = statusFilter.value
+  if (regionFilter.value) params.region = regionFilter.value
+  if (ownerFilter.value) params.owner = ownerFilter.value
   if (paidAtStart.value) params.paid_at_start = paidAtStart.value
   if (paidAtEnd.value) params.paid_at_end = paidAtEnd.value
   return params
@@ -196,9 +215,34 @@ const fetchData = async () => {
   if (res.data && Array.isArray(res.data.results)) {
     payments.value = res.data.results
     total.value = res.data.count
+    if (res.data.total_amount != null) {
+      summary.value = {
+        total_amount: res.data.total_amount,
+        total_count: res.data.count || 0
+      }
+    } else {
+      await fetchSummary()
+    }
   } else {
     payments.value = res.data
     total.value = res.data.length || 0
+    const sum = payments.value.reduce((total, item) => total + (Number(item.amount) || 0), 0)
+    summary.value = {
+      total_amount: sum || 0,
+      total_count: total.value
+    }
+  }
+}
+
+const fetchSummary = async () => {
+  try {
+    const params = buildParams()
+    delete params.page
+    delete params.page_size
+    const summaryRes = await api.get('/payments/summary/', { params })
+    summary.value = summaryRes.data || { total_amount: 0, total_count: 0 }
+  } catch (err) {
+    summary.value = { total_amount: 0, total_count: 0 }
   }
 }
 
@@ -210,6 +254,16 @@ const fetchContracts = async () => {
 const fetchAccounts = async () => {
   const res = await api.get('/accounts/', { params: { page: 1, page_size: 1000 } })
   accounts.value = Array.isArray(res.data.results) ? res.data.results : res.data
+}
+
+const fetchRegions = async () => {
+  const res = await api.get('/regions/', { params: { page: 1, page_size: 1000 } })
+  regions.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
+const fetchUsers = async () => {
+  const res = await api.get('/users/', { params: { page: 1, page_size: 200, ordering: 'username' } })
+  users.value = Array.isArray(res.data?.results) ? res.data.results : res.data
 }
 const goCreate = () => {
   router.push('/payments/new')
@@ -238,6 +292,8 @@ const applyFilters = () => {
 const resetFilters = () => {
   search.value = ''
   statusFilter.value = ''
+  regionFilter.value = ''
+  ownerFilter.value = ''
   paidAtStart.value = ''
   paidAtEnd.value = ''
   applyFilters()
@@ -269,6 +325,8 @@ const deletePayment = async (id) => {
 }
 
 onMounted(async () => {
+  await fetchRegions()
+  await fetchUsers()
   await fetchAccounts()
   await fetchContracts()
   await fetchData()
