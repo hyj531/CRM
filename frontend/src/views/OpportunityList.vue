@@ -43,12 +43,26 @@
     <div class="filter-bar opportunity-filters">
       <div class="filter-left">
         <input v-model="search" placeholder="搜索商机名称" @keyup.enter="applyFilters" />
-        <select v-model="filters.account">
-          <option value="">客户</option>
-          <option v-for="acc in accounts" :key="acc.id" :value="String(acc.id)">
-            {{ accountLabel(acc) }}
-          </option>
-        </select>
+        <div class="filter-autocomplete">
+          <input
+            v-model="accountSearch"
+            placeholder="输入客户全称/简称"
+            @focus="showAccountDropdown = true"
+            @input="showAccountDropdown = true"
+            @blur="hideAccountDropdown"
+          />
+          <div v-if="showAccountDropdown && accountSearch" class="filter-suggestions">
+            <div
+              v-for="acc in filteredAccounts"
+              :key="acc.id"
+              class="filter-suggestion"
+              @mousedown.prevent="selectFilterAccount(acc)"
+            >
+              {{ accountLabel(acc) }}
+            </div>
+            <div v-if="!filteredAccounts.length" class="filter-empty">无匹配客户</div>
+          </div>
+        </div>
         <select v-model="filters.region">
           <option value="">区域</option>
           <option v-for="region in regions" :key="region.id" :value="String(region.id)">
@@ -201,6 +215,8 @@ const lookupOptions = ref({
 })
 const regions = ref([])
 const accounts = ref([])
+const accountSearch = ref('')
+const showAccountDropdown = ref(false)
 const users = ref([])
 const usersError = ref('')
 const currentPage = ref(1)
@@ -246,6 +262,29 @@ const visibleUsers = computed(() => {
   if (!extId) return users.value
   return users.value.filter((u) => Number(u.region) !== extId)
 })
+
+const filteredAccounts = computed(() => {
+  const keyword = accountSearch.value.trim().toLowerCase()
+  if (!keyword) return accounts.value
+  return accounts.value.filter((acc) => {
+    const fullName = (acc.full_name || '').toLowerCase()
+    const shortName = (acc.short_name || '').toLowerCase()
+    return fullName.includes(keyword) || shortName.includes(keyword)
+  })
+})
+
+const selectFilterAccount = (acc) => {
+  filters.value.account = String(acc.id)
+  accountSearch.value = accountLabel(acc)
+  showAccountDropdown.value = false
+  applyFilters()
+}
+
+const hideAccountDropdown = () => {
+  setTimeout(() => {
+    showAccountDropdown.value = false
+  }, 120)
+}
 
 const buildParams = () => {
   const params = {
@@ -435,4 +474,57 @@ onMounted(async () => {
 watch(ordering, () => {
   applyFilters()
 })
+
+watch(accountSearch, (val) => {
+  if (!val) {
+    filters.value.account = ''
+  }
+})
 </script>
+
+<style scoped>
+.filter-autocomplete {
+  position: relative;
+}
+
+.filter-bar {
+  position: relative;
+  z-index: 50;
+}
+
+.opportunity-filters {
+  overflow: visible;
+}
+
+.opportunity-filters .filter-left {
+  overflow: visible;
+}
+
+.filter-suggestions {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  max-height: 220px;
+  overflow: auto;
+  z-index: 60;
+}
+
+.filter-suggestion {
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.filter-suggestion:hover {
+  background: #f1f5f9;
+}
+
+.filter-empty {
+  padding: 8px 10px;
+  color: #94a3b8;
+}
+</style>

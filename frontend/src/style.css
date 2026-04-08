@@ -727,7 +727,11 @@ a {
   align-items: center;
 }
 
-.payment-filters .filter-left,
+.payment-filters .filter-left {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
 .contract-filters .filter-left {
   flex-wrap: wrap;
   align-items: center;

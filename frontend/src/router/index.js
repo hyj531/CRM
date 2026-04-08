@@ -29,7 +29,7 @@ const routes = [
   { path: '/accounts/new', name: 'account-create', component: AccountDetail },
   { path: '/accounts/:id', name: 'account-detail', component: AccountDetail, props: true },
   { path: '/contacts', name: 'contacts', component: ContactList },
-  { path: '/contracts', name: 'contracts', component: ContractList },
+  { path: '/contracts', name: 'contracts', component: ContractList, meta: { keepAlive: true } },
   { path: '/contracts/new', name: 'contract-create', component: ContractForm },
   { path: '/contracts/:id', name: 'contract-detail', component: ContractForm, props: true },
   { path: '/invoices', name: 'invoices', component: InvoiceList },
