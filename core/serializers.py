@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from rest_framework.reverse import reverse
 from django.db.models import Sum
 
 from core import models
@@ -329,6 +330,93 @@ class PaymentSerializer(serializers.ModelSerializer):
             'region': {'required': False},
             'created_by': {'read_only': True},
         }
+
+
+class CommonDocDirectorySerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
+    can_view = serializers.SerializerMethodField(read_only=True)
+    can_download = serializers.SerializerMethodField(read_only=True)
+    can_upload = serializers.SerializerMethodField(read_only=True)
+    can_edit = serializers.SerializerMethodField(read_only=True)
+    can_delete = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = models.CommonDocDirectory
+        fields = '__all__'
+        extra_kwargs = {
+            'created_by': {'read_only': True},
+            'updated_by': {'read_only': True},
+        }
+
+    def _permission(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return None
+        if user.is_staff or user.is_superuser:
+            return 'admin'
+        permission_map = self.context.get('directory_permission_map', {})
+        return permission_map.get(obj.id)
+
+    def get_can_view(self, obj):
+        perm = self._permission(obj)
+        if perm == 'admin':
+            return True
+        return bool(perm and perm.can_view)
+
+    def get_can_download(self, obj):
+        perm = self._permission(obj)
+        if perm == 'admin':
+            return True
+        return bool(perm and perm.can_download)
+
+    def get_can_upload(self, obj):
+        perm = self._permission(obj)
+        if perm == 'admin':
+            return True
+        return bool(perm and perm.can_upload)
+
+    def get_can_edit(self, obj):
+        perm = self._permission(obj)
+        if perm == 'admin':
+            return True
+        return bool(perm and perm.can_edit)
+
+    def get_can_delete(self, obj):
+        perm = self._permission(obj)
+        if perm == 'admin':
+            return True
+        return bool(perm and perm.can_delete)
+
+
+class CommonDocDirectoryPermissionSerializer(serializers.ModelSerializer):
+    role_name = serializers.CharField(source='role.name', read_only=True)
+
+    class Meta:
+        model = models.CommonDocDirectoryPermission
+        fields = '__all__'
+
+
+class CommonDocumentSerializer(serializers.ModelSerializer):
+    directory_name = serializers.CharField(source='directory.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
+    download_url = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = models.CommonDocument
+        fields = '__all__'
+        extra_kwargs = {
+            'original_name': {'read_only': True},
+            'created_by': {'read_only': True},
+            'updated_by': {'read_only': True},
+        }
+
+    def get_download_url(self, obj):
+        request = self.context.get('request')
+        url = reverse('common-document-download', kwargs={'pk': obj.pk}, request=request)
+        return url
 
 
 class DingTalkSyncRequestSerializer(serializers.Serializer):

@@ -551,7 +551,7 @@ a {
 }
 
 .contract-receivable-table {
-  min-width: 980px;
+  min-width: 1120px;
 }
 
 .contract-receivable-table th,
@@ -596,6 +596,11 @@ a {
 
 .contract-receivable-table th:nth-child(8),
 .contract-receivable-table td:nth-child(8) {
+  min-width: 120px;
+}
+
+.contract-receivable-table th:nth-child(9),
+.contract-receivable-table td:nth-child(9) {
   min-width: 140px;
 }
 

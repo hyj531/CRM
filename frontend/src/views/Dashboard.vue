@@ -206,7 +206,11 @@ const stages = [
 
 const formatMoney = (value) => {
   const num = Number(value)
-  return Number.isFinite(num) ? num.toFixed(2) : '0.00'
+  if (!Number.isFinite(num)) return '0'
+  return new Intl.NumberFormat('zh-CN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(num)
 }
 
 const years = computed(() => {

@@ -17,6 +17,7 @@ import ActivityList from '../views/ActivityList.vue'
 import TaskList from '../views/TaskList.vue'
 import ApprovalTask from '../views/ApprovalTask.vue'
 import ApprovalTaskList from '../views/ApprovalTaskList.vue'
+import CommonDocList from '../views/CommonDocList.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: Login },
@@ -36,6 +37,7 @@ const routes = [
   { path: '/payments', name: 'payments', component: PaymentList },
   { path: '/payments/new', name: 'payment-create', component: PaymentForm },
   { path: '/payments/:id', name: 'payment-detail', component: PaymentForm, props: true },
+  { path: '/common-docs', name: 'common-docs', component: CommonDocList },
   { path: '/activities', name: 'activities', component: ActivityList },
   { path: '/tasks', name: 'tasks', component: TaskList },
   { path: '/approvals/tasks', name: 'approval-task-list', component: ApprovalTaskList },

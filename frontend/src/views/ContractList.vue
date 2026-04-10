@@ -191,6 +191,7 @@
               <th>合同金额</th>
               <th>已回款</th>
               <th>应收款</th>
+              <th>签署日期</th>
               <th>负责人</th>
               <th>区域</th>
               <th>操作</th>
@@ -208,6 +209,7 @@
               <td>{{ formatMoney(item.amount) }}</td>
               <td>{{ formatMoney(item.paid_total) }}</td>
               <td>{{ receivableAmount(item) }}</td>
+              <td>{{ item.signed_at || '-' }}</td>
               <td>{{ item.owner_name || item.owner || '-' }}</td>
               <td>{{ item.region_name || '-' }}</td>
               <td>
@@ -219,7 +221,7 @@
               </td>
             </tr>
             <tr v-if="!pagedContracts.length">
-              <td colspan="8" style="color: #888;">暂无数据</td>
+              <td colspan="9" style="color: #888;">暂无数据</td>
             </tr>
           </tbody>
         </table>

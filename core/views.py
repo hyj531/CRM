@@ -2,11 +2,15 @@ from django.contrib.auth import get_user_model
 from django.db.models import Count, Sum, Q
 import csv
 import json
+import mimetypes
+import os
+from urllib.parse import quote as urlquote
 
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.contrib.auth import password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import permissions, status, viewsets
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
@@ -20,6 +24,41 @@ from approval import serializers as approval_serializers
 from approval.services import engine as approval_engine
 
 User = get_user_model()
+
+DIRECTORY_PERMISSION_FIELD_MAP = {
+    'view': 'can_view',
+    'download': 'can_download',
+    'upload': 'can_upload',
+    'edit': 'can_edit',
+    'delete': 'can_delete',
+}
+
+
+def _is_admin(user):
+    return bool(user and user.is_authenticated and (user.is_staff or user.is_superuser))
+
+
+def _parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ('1', 'true', 'yes', 'on')
+    return bool(value)
+
+
+def _has_directory_permission(user, directory, permission_key):
+    if _is_admin(user):
+        return True
+    if not user or not user.is_authenticated or not directory or not user.role_id:
+        return False
+    field_name = DIRECTORY_PERMISSION_FIELD_MAP.get(permission_key)
+    if not field_name:
+        return False
+    return models.CommonDocDirectoryPermission.objects.filter(
+        directory=directory,
+        role_id=user.role_id,
+        **{field_name: True}
+    ).exists()
 
 
 class TokenView(TokenObtainPairView):
@@ -794,6 +833,273 @@ class PaymentViewSet(RegionScopedViewSet):
             'total_amount': totals.get('total_amount') or 0,
             'total_count': totals.get('total_count') or 0
         })
+
+
+class CommonDocDirectoryViewSet(viewsets.ModelViewSet):
+    queryset = models.CommonDocDirectory.objects.all()
+    serializer_class = serializers.CommonDocDirectorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    module_code = models.RolePermission.MODULE_COMMON_DOC
+    filterset_fields = ['is_active']
+    search_fields = ['name']
+    ordering_fields = ['sort_order', 'id', 'created_at', 'updated_at', 'name']
+
+    def _ensure_admin(self):
+        if not _is_admin(self.request.user):
+            raise PermissionDenied('仅管理员可维护目录。')
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if _is_admin(user):
+            return queryset
+        if not user.role_id:
+            return queryset.none()
+        allowed_directory_ids = models.CommonDocDirectoryPermission.objects.filter(
+            role_id=user.role_id,
+            can_view=True
+        ).values('directory_id')
+        return queryset.filter(id__in=allowed_directory_ids)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        user = self.request.user
+        if not _is_admin(user) and user and user.is_authenticated and user.role_id:
+            permissions_qs = models.CommonDocDirectoryPermission.objects.filter(role_id=user.role_id)
+            context['directory_permission_map'] = {
+                perm.directory_id: perm for perm in permissions_qs
+            }
+        return context
+
+    def perform_create(self, serializer):
+        self._ensure_admin()
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        self._ensure_admin()
+        serializer.save(updated_by=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        self._ensure_admin()
+        instance = self.get_object()
+        if instance.documents.exists():
+            raise ValidationError({'detail': '该目录下仍有文档，请先清空后再删除。'})
+        return super().destroy(request, *args, **kwargs)
+
+    def _permissions_payload(self, directory):
+        role_map = {
+            item['id']: item
+            for item in models.Role.objects.values('id', 'name').order_by('id')
+        }
+        permission_map = {
+            item['role_id']: item
+            for item in models.CommonDocDirectoryPermission.objects.filter(directory=directory).values(
+                'role_id', 'can_view', 'can_download', 'can_upload', 'can_edit', 'can_delete'
+            )
+        }
+        items = []
+        for role_id, role in role_map.items():
+            perm = permission_map.get(role_id, {})
+            items.append({
+                'role': role_id,
+                'role_name': role['name'],
+                'can_view': bool(perm.get('can_view')),
+                'can_download': bool(perm.get('can_download')),
+                'can_upload': bool(perm.get('can_upload')),
+                'can_edit': bool(perm.get('can_edit')),
+                'can_delete': bool(perm.get('can_delete')),
+            })
+        return {'directory': directory.id, 'items': items}
+
+    @action(detail=True, methods=['get', 'put'])
+    def permissions(self, request, pk=None):
+        self._ensure_admin()
+        directory = self.get_object()
+
+        if request.method.lower() == 'get':
+            return Response(self._permissions_payload(directory))
+
+        items = request.data.get('items')
+        if not isinstance(items, list):
+            raise ValidationError({'items': '权限数据格式错误，应为数组。'})
+
+        valid_role_ids = set(models.Role.objects.values_list('id', flat=True))
+        target_map = {}
+        for item in items:
+            role_id = item.get('role')
+            if role_id is None:
+                continue
+            try:
+                role_id = int(role_id)
+            except (TypeError, ValueError):
+                raise ValidationError({'items': '角色ID格式错误。'})
+            if role_id not in valid_role_ids:
+                raise ValidationError({'items': f'角色不存在: {role_id}'})
+            target_map[role_id] = {
+                'can_view': _parse_bool(item.get('can_view')),
+                'can_download': _parse_bool(item.get('can_download')),
+                'can_upload': _parse_bool(item.get('can_upload')),
+                'can_edit': _parse_bool(item.get('can_edit')),
+                'can_delete': _parse_bool(item.get('can_delete')),
+            }
+
+        existing_qs = models.CommonDocDirectoryPermission.objects.filter(directory=directory)
+        existing_map = {perm.role_id: perm for perm in existing_qs}
+        processed_role_ids = set()
+
+        for role_id, perms in target_map.items():
+            processed_role_ids.add(role_id)
+            if any(perms.values()):
+                models.CommonDocDirectoryPermission.objects.update_or_create(
+                    directory=directory,
+                    role_id=role_id,
+                    defaults=perms
+                )
+            else:
+                models.CommonDocDirectoryPermission.objects.filter(
+                    directory=directory,
+                    role_id=role_id
+                ).delete()
+
+        stale_role_ids = [rid for rid in existing_map.keys() if rid not in processed_role_ids]
+        if stale_role_ids:
+            models.CommonDocDirectoryPermission.objects.filter(
+                directory=directory,
+                role_id__in=stale_role_ids
+            ).delete()
+
+        return Response(self._permissions_payload(directory))
+
+
+class CommonDocumentViewSet(viewsets.ModelViewSet):
+    queryset = models.CommonDocument.objects.select_related('directory', 'created_by', 'updated_by')
+    serializer_class = serializers.CommonDocumentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    module_code = models.RolePermission.MODULE_COMMON_DOC
+    filterset_fields = ['directory']
+    search_fields = ['title', 'original_name', 'description']
+    ordering_fields = ['created_at', 'updated_at', 'title']
+    parser_classes = [MultiPartParser, FormParser]
+    PREVIEW_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'}
+    PREVIEW_TEXT_CONTENT_TYPES = {
+        'txt': 'text/plain; charset=utf-8',
+        'md': 'text/markdown; charset=utf-8',
+        'log': 'text/plain; charset=utf-8',
+        'csv': 'text/csv; charset=utf-8',
+        'json': 'application/json; charset=utf-8',
+        'xml': 'application/xml; charset=utf-8',
+        'yaml': 'text/yaml; charset=utf-8',
+        'yml': 'text/yaml; charset=utf-8',
+        'html': 'text/html; charset=utf-8',
+        'htm': 'text/html; charset=utf-8',
+    }
+    PREVIEW_TEXT_MAX_BYTES = 1024 * 1024
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if _is_admin(user):
+            return queryset
+        if not user.role_id:
+            return queryset.none()
+        allowed_directory_ids = models.CommonDocDirectoryPermission.objects.filter(
+            role_id=user.role_id,
+            can_view=True
+        ).values('directory_id')
+        return queryset.filter(directory_id__in=allowed_directory_ids)
+
+    def perform_create(self, serializer):
+        directory = serializer.validated_data.get('directory')
+        if not _has_directory_permission(self.request.user, directory, 'upload'):
+            raise PermissionDenied('当前目录无上传权限。')
+        document = serializer.save(created_by=self.request.user, updated_by=self.request.user)
+        if document.file:
+            document.original_name = os.path.basename(document.file.name)
+            if not document.title:
+                document.title = document.original_name
+            document.save(update_fields=['original_name', 'title'])
+
+    def perform_update(self, serializer):
+        document = serializer.instance
+        if not _has_directory_permission(self.request.user, document.directory, 'edit'):
+            raise PermissionDenied('当前目录无编辑权限。')
+        if 'directory' in serializer.validated_data and serializer.validated_data.get('directory') != document.directory:
+            raise ValidationError({'directory': '暂不支持修改所属目录。'})
+        updated_document = serializer.save(updated_by=self.request.user)
+        if 'file' in serializer.validated_data and updated_document.file:
+            updated_document.original_name = os.path.basename(updated_document.file.name)
+            if not updated_document.title:
+                updated_document.title = updated_document.original_name
+            updated_document.save(update_fields=['original_name', 'title'])
+
+    def perform_destroy(self, instance):
+        if not _has_directory_permission(self.request.user, instance.directory, 'delete'):
+            raise PermissionDenied('当前目录无删除权限。')
+        instance.delete()
+
+    def _preview_info(self, filename):
+        ext = os.path.splitext((filename or '').lower())[1].lstrip('.')
+        if ext in self.PREVIEW_IMAGE_EXTENSIONS:
+            mime_type, _ = mimetypes.guess_type(filename)
+            return ext, mime_type or 'image/jpeg', False
+        if ext == 'pdf':
+            return ext, 'application/pdf', False
+        if ext in self.PREVIEW_TEXT_CONTENT_TYPES:
+            return ext, self.PREVIEW_TEXT_CONTENT_TYPES[ext], True
+        return ext, '', False
+
+    def _inline_disposition(self, filename):
+        safe_name = (filename or 'preview').replace('"', '')
+        return f"inline; filename=\"{safe_name}\"; filename*=UTF-8''{urlquote(filename or 'preview')}"
+
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        document = models.CommonDocument.objects.select_related('directory').filter(pk=pk).first()
+        if not document:
+            return Response({'detail': '文档不存在。'}, status=status.HTTP_404_NOT_FOUND)
+        if not _has_directory_permission(request.user, document.directory, 'download'):
+            raise PermissionDenied('当前目录无下载权限。')
+        filename = document.original_name or os.path.basename(document.file.name)
+        try:
+            response = FileResponse(document.file.open('rb'), as_attachment=True, filename=filename)
+        except FileNotFoundError:
+            return Response({'detail': '文档文件不存在或已丢失。'}, status=status.HTTP_404_NOT_FOUND)
+        return response
+
+    @action(detail=True, methods=['get'])
+    def preview(self, request, pk=None):
+        document = models.CommonDocument.objects.select_related('directory').filter(pk=pk).first()
+        if not document:
+            return Response({'detail': '文档不存在。'}, status=status.HTTP_404_NOT_FOUND)
+        if not _has_directory_permission(request.user, document.directory, 'view'):
+            raise PermissionDenied('当前目录无查看权限。')
+
+        filename = document.original_name or os.path.basename(document.file.name)
+        _, content_type, is_text = self._preview_info(filename)
+        if not content_type:
+            return Response(
+                {'detail': '该文件类型暂不支持在线预览，请下载查看。'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if is_text and document.file.size > self.PREVIEW_TEXT_MAX_BYTES:
+            return Response(
+                {'detail': '文本文件过大，暂不支持在线预览，请下载查看。'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            response = FileResponse(
+                document.file.open('rb'),
+                as_attachment=False,
+                filename=filename,
+                content_type=content_type
+            )
+        except FileNotFoundError:
+            return Response({'detail': '文档文件不存在或已丢失。'}, status=status.HTTP_404_NOT_FOUND)
+
+        response['Content-Disposition'] = self._inline_disposition(filename)
+        return response
 
 
 @api_view(['GET'])

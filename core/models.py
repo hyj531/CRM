@@ -66,6 +66,7 @@ class RolePermission(models.Model):
     MODULE_PAYMENT = 'payment'
     MODULE_ACTIVITY = 'activity'
     MODULE_TASK = 'task'
+    MODULE_COMMON_DOC = 'common_doc'
 
     MODULE_CHOICES = [
         (MODULE_LEAD, '线索'),
@@ -78,6 +79,7 @@ class RolePermission(models.Model):
         (MODULE_PAYMENT, '回款'),
         (MODULE_ACTIVITY, '商机跟进'),
         (MODULE_TASK, '任务'),
+        (MODULE_COMMON_DOC, '常用文档'),
     ]
 
     role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name='permissions', verbose_name='角色')
@@ -577,3 +579,70 @@ class Payment(OwnedRegionModel):
 
     def __str__(self):
         return f"Payment {self.id}"
+
+
+class CommonDocDirectory(TimestampedModel):
+    name = models.CharField('目录名称', max_length=200, unique=True)
+    sort_order = models.PositiveIntegerField('排序', default=0)
+    is_active = models.BooleanField('是否启用', default=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='common_doc_directory_created_items', verbose_name='创建人'
+    )
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='common_doc_directory_updated_items', verbose_name='更新人'
+    )
+
+    class Meta(TimestampedModel.Meta):
+        ordering = ['sort_order', 'id']
+        verbose_name = '常用文档目录'
+        verbose_name_plural = '常用文档目录'
+
+    def __str__(self):
+        return self.name
+
+
+class CommonDocDirectoryPermission(models.Model):
+    directory = models.ForeignKey(
+        CommonDocDirectory, on_delete=models.CASCADE, related_name='role_permissions', verbose_name='目录'
+    )
+    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name='common_doc_permissions', verbose_name='角色')
+    can_view = models.BooleanField('可查看', default=False)
+    can_download = models.BooleanField('可下载', default=False)
+    can_upload = models.BooleanField('可上传', default=False)
+    can_edit = models.BooleanField('可编辑', default=False)
+    can_delete = models.BooleanField('可删除', default=False)
+
+    class Meta:
+        unique_together = [('directory', 'role')]
+        verbose_name = '常用文档目录权限'
+        verbose_name_plural = '常用文档目录权限'
+
+    def __str__(self):
+        return f'{self.directory.name}:{self.role.name}'
+
+
+class CommonDocument(TimestampedModel):
+    directory = models.ForeignKey(
+        CommonDocDirectory, on_delete=models.PROTECT, related_name='documents', verbose_name='目录'
+    )
+    title = models.CharField('文档标题', max_length=200, blank=True)
+    file = models.FileField('文档文件', upload_to='common_documents/%Y/%m/')
+    original_name = models.CharField('原始文件名', max_length=255, blank=True)
+    description = models.CharField('文档备注', max_length=200, blank=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='common_document_created_items', verbose_name='创建人'
+    )
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='common_document_updated_items', verbose_name='更新人'
+    )
+
+    class Meta(TimestampedModel.Meta):
+        verbose_name = '常用文档'
+        verbose_name_plural = '常用文档'
+
+    def __str__(self):
+        return self.title or self.original_name or self.file.name

@@ -14,6 +14,7 @@
         <router-link to="/accounts"><span class="nav-icon">◼</span>客户管理</router-link>
         <router-link to="/contracts"><span class="nav-icon">▣</span>合同管理</router-link>
         <router-link to="/payments"><span class="nav-icon">◆</span>回款管理</router-link>
+        <router-link v-if="canAccessCommonDocs" to="/common-docs"><span class="nav-icon">◧</span>常用文档</router-link>
       </nav>
       <div class="sidebar-footer">
         <div class="sidebar-user">
@@ -61,13 +62,18 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import api from './api'
 
 const auth = useAuthStore()
 const router = useRouter()
+const canAccessCommonDocs = computed(() => {
+  if (auth.user?.is_staff || auth.user?.is_superuser) return true
+  const mod = auth.user?.permissions?.common_doc
+  return Boolean(mod && (mod.create || mod.update || mod.delete || mod.approve))
+})
 const showPasswordForm = ref(false)
 const passwordSaving = ref(false)
 const passwordError = ref('')

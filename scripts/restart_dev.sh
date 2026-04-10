@@ -67,6 +67,29 @@ cd "$ROOT_DIR/frontend"
 nohup "$FRONTEND_VITE" --host 127.0.0.1 --port 5173 > /tmp/vite.log 2>&1 &
 FRONT_PID=$!
 
+wait_for_port() {
+  local port="$1"
+  local retries=30
+  local i
+  for ((i=1; i<=retries; i++)); do
+    if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  return 1
+}
+
+if ! wait_for_port 8000; then
+  echo "Backend failed to listen on 8000. Check /tmp/django.log"
+  exit 1
+fi
+
+if ! wait_for_port 5173; then
+  echo "Frontend failed to listen on 5173. Check /tmp/vite.log"
+  exit 1
+fi
+
 echo "Backend PID: ${BACK_PID}"
 echo "Frontend PID: ${FRONT_PID}"
 echo "Backend:  http://127.0.0.1:8000/"
