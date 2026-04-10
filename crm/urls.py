@@ -35,7 +35,7 @@ router.register(r'approval-tasks', approval_views.ApprovalTaskViewSet, basename=
 router.register(r'reports', views.ReportViewSet, basename='report')
 
 urlpatterns = [
-    path('', RedirectView.as_view(url='/admin/', permanent=False)),
+    path('', RedirectView.as_view(url='/app/', permanent=False)),
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api/auth/', include('rest_framework.urls')),
