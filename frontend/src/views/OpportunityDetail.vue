@@ -36,12 +36,37 @@
           </div>
           <div>
             <label>客户</label>
-            <select v-model.number="opportunity.account">
-              <option :value="null">未设置</option>
-              <option v-for="acc in accounts" :key="acc.id" :value="acc.id">
-                {{ acc.full_name || acc.short_name || acc.name || `ID ${acc.id}` }}
-              </option>
-            </select>
+            <div ref="accountPickerRef" class="account-picker">
+              <div class="account-search">
+                <input
+                  v-model="accountQuery"
+                  placeholder="输入客户全称/简称，自动搜索"
+                  @focus="handleAccountFocus"
+                  @blur="handleAccountBlur"
+                />
+                <button class="button secondary" type="button" @click="triggerAccountSearch">搜索</button>
+                <button v-if="opportunity.account" class="button secondary" type="button" @click="clearAccount">
+                  清除
+                </button>
+              </div>
+              <div v-if="showAccountDropdown && accountSearchHint" class="account-hint">{{ accountSearchHint }}</div>
+              <div v-if="selectedAccountLabel" class="account-selected">
+                已选择：{{ selectedAccountLabel }}
+              </div>
+              <div v-if="showAccountDropdown" class="account-results">
+                <div v-if="accountLoading" style="color: #888;">加载中...</div>
+                <div v-else-if="!accountOptions.length" style="color: #888;">暂无匹配客户</div>
+                <button
+                  v-for="acc in accountOptions"
+                  :key="acc.id"
+                  class="account-option"
+                  type="button"
+                  @mousedown.prevent="selectAccount(acc)"
+                >
+                  {{ acc.full_name }}{{ acc.short_name ? `（${acc.short_name}）` : '' }}
+                </button>
+              </div>
+            </div>
           </div>
           <div>
             <label>阶段</label>
@@ -295,7 +320,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
@@ -314,7 +339,12 @@ const users = ref([])
 const usersError = ref('')
 const usersLoading = ref(false)
 const regions = ref([])
-const accounts = ref([])
+const accountPickerRef = ref(null)
+const accountOptions = ref([])
+const accountQuery = ref('')
+const accountLoading = ref(false)
+const selectedAccount = ref(null)
+const accountFocused = ref(false)
 const activities = ref([])
 const attachments = ref([])
 const attachmentForm = ref({
@@ -323,6 +353,8 @@ const attachmentForm = ref({
 })
 const uploading = ref(false)
 const uploadError = ref('')
+let searchTimer = null
+let accountBlurTimer = null
 const toLocalDateTime = () => {
   const now = new Date()
   const offset = now.getTimezoneOffset() * 60000
@@ -418,6 +450,26 @@ const ownerLabel = (item) => {
   return item.owner_name || item.owner || ''
 }
 
+const accountLabel = (acc) => {
+  if (!acc) return ''
+  return acc.full_name || acc.short_name || acc.name || `ID ${acc.id}`
+}
+
+const accountSearchHint = computed(() => {
+  const query = accountQuery.value.trim()
+  if (!query) return ''
+  if (query.length < 2) return '请输入至少 2 个字'
+  return ''
+})
+
+const selectedAccountLabel = computed(() => {
+  const acc = selectedAccount.value
+  if (!opportunity.value?.account || !acc) return ''
+  return `${acc.full_name || acc.short_name || `ID ${acc.id}`}${acc.short_name ? `（${acc.short_name}）` : ''}`
+})
+
+const showAccountDropdown = computed(() => accountFocused.value && accountQuery.value.trim().length > 0)
+
 const fileName = (file) => file.original_name || file.file || '-'
 
 const fileUrl = (file) => file.file_url || file.file || '#'
@@ -445,9 +497,52 @@ const fetchLookups = async () => {
   }
 }
 
+const loadAccounts = async (query) => {
+  accountLoading.value = true
+  try {
+    const res = await api.get('/accounts/', {
+      params: {
+        page: 1,
+        page_size: 20,
+        ordering: '-created_at',
+        search: query || ''
+      }
+    })
+    accountOptions.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+  } finally {
+    accountLoading.value = false
+  }
+}
+
+const fetchAccountById = async (id) => {
+  if (!id) return null
+  try {
+    const res = await api.get(`/accounts/${id}/`)
+    return res.data
+  } catch (err) {
+    return null
+  }
+}
+
 const fetchDetail = async () => {
   const res = await api.get(`/opportunities/${props.id}/`)
   opportunity.value = res.data
+  if (opportunity.value?.account) {
+    const acc = await fetchAccountById(opportunity.value.account)
+    if (acc) {
+      selectedAccount.value = acc
+      accountQuery.value = accountLabel(acc)
+      accountOptions.value = [acc]
+    } else {
+      selectedAccount.value = null
+      accountQuery.value = ''
+      accountOptions.value = []
+    }
+  } else {
+    selectedAccount.value = null
+    accountQuery.value = ''
+    accountOptions.value = []
+  }
 }
 
 const fetchUsers = async () => {
@@ -470,9 +565,56 @@ const fetchRegions = async () => {
   regions.value = Array.isArray(res.data?.results) ? res.data.results : res.data
 }
 
-const fetchAccounts = async () => {
-  const res = await api.get('/accounts/', { params: { page: 1, page_size: 1000, ordering: '-created_at' } })
-  accounts.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+const triggerAccountSearch = () => {
+  const query = accountQuery.value.trim()
+  if (!query || query.length < 2) return
+  loadAccounts(query)
+}
+
+const handleAccountFocus = () => {
+  if (accountBlurTimer) {
+    clearTimeout(accountBlurTimer)
+    accountBlurTimer = null
+  }
+  accountFocused.value = true
+}
+
+const handleAccountBlur = (event) => {
+  const nextTarget = event?.relatedTarget
+  if (nextTarget && accountPickerRef.value?.contains(nextTarget)) {
+    return
+  }
+  if (accountBlurTimer) {
+    clearTimeout(accountBlurTimer)
+  }
+  accountBlurTimer = setTimeout(() => {
+    const activeElement = document.activeElement
+    if (activeElement && accountPickerRef.value?.contains(activeElement)) {
+      return
+    }
+    accountFocused.value = false
+    accountBlurTimer = null
+  }, 120)
+}
+
+const selectAccount = (acc) => {
+  if (!opportunity.value) return
+  opportunity.value.account = acc.id
+  opportunity.value.account_name = accountLabel(acc)
+  selectedAccount.value = acc
+  accountQuery.value = accountLabel(acc)
+  accountFocused.value = false
+  accountOptions.value = [acc]
+}
+
+const clearAccount = () => {
+  if (!opportunity.value) return
+  opportunity.value.account = null
+  opportunity.value.account_name = ''
+  selectedAccount.value = null
+  accountQuery.value = ''
+  accountOptions.value = []
+  accountFocused.value = false
 }
 
 const fetchActivities = async () => {
@@ -691,6 +833,7 @@ const save = async () => {
   }
   const payload = {
     opportunity_name: opportunity.value.opportunity_name,
+    account: toNullableInt(opportunity.value.account),
     stage: opportunity.value.stage,
     win_probability: opportunity.value.win_probability,
     expected_amount: opportunity.value.expected_amount,
@@ -717,9 +860,36 @@ onMounted(async () => {
   await fetchDetail()
   await fetchUsers()
   await fetchRegions()
-  await fetchAccounts()
   await fetchActivities()
   await fetchAttachments()
+})
+
+watch(accountQuery, (value) => {
+  const query = value.trim()
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+  if (!query || query.length < 2) {
+    if (!query) {
+      accountOptions.value = selectedAccount.value ? [selectedAccount.value] : []
+    }
+    return
+  }
+  searchTimer = setTimeout(() => {
+    loadAccounts(query)
+  }, 300)
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+  if (accountBlurTimer) {
+    clearTimeout(accountBlurTimer)
+    accountBlurTimer = null
+  }
 })
 </script>
 

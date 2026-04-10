@@ -24,7 +24,7 @@
         </div>
         <div>
           <label>客户</label>
-          <div class="account-picker">
+          <div ref="accountPickerRef" class="account-picker">
             <div class="account-search">
               <input
                 v-model="accountQuery"
@@ -185,7 +185,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
@@ -203,6 +203,7 @@ const accountQuery = ref('')
 const accountLoading = ref(false)
 const selectedAccount = ref(null)
 const showAccountDropdown = ref(false)
+const accountPickerRef = ref(null)
 const accountCreate = ref({
   full_name: '',
   short_name: ''
@@ -267,6 +268,7 @@ const fetchLookups = async () => {
 }
 
 let searchTimer = null
+let accountBlurTimer = null
 
 const loadAccounts = async (query) => {
   accountLoading.value = true
@@ -321,15 +323,31 @@ const searchHint = computed(() => {
 })
 
 const openAccountDropdown = () => {
+  if (accountBlurTimer) {
+    clearTimeout(accountBlurTimer)
+    accountBlurTimer = null
+  }
   showAccountDropdown.value = true
   if (!accountOptions.value.length) {
     loadAccounts('')
   }
 }
 
-const closeAccountDropdown = () => {
-  setTimeout(() => {
+const closeAccountDropdown = (event) => {
+  const nextTarget = event?.relatedTarget
+  if (nextTarget && accountPickerRef.value?.contains(nextTarget)) {
+    return
+  }
+  if (accountBlurTimer) {
+    clearTimeout(accountBlurTimer)
+  }
+  accountBlurTimer = setTimeout(() => {
+    const activeElement = document.activeElement
+    if (activeElement && accountPickerRef.value?.contains(activeElement)) {
+      return
+    }
     showAccountDropdown.value = false
+    accountBlurTimer = null
   }, 120)
 }
 
@@ -569,6 +587,17 @@ watch(accountQuery, (value) => {
   searchTimer = setTimeout(() => {
     loadAccounts(query)
   }, 300)
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+  if (accountBlurTimer) {
+    clearTimeout(accountBlurTimer)
+    accountBlurTimer = null
+  }
 })
 </script>
 
