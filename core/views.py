@@ -1025,16 +1025,28 @@ class CommonDocumentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('当前目录无编辑权限。')
         if 'directory' in serializer.validated_data and serializer.validated_data.get('directory') != document.directory:
             raise ValidationError({'directory': '暂不支持修改所属目录。'})
+        old_file_name = document.file.name if document.file else ''
+        replacing_file = bool(serializer.validated_data.get('file'))
         updated_document = serializer.save(updated_by=self.request.user)
         if 'file' in serializer.validated_data and updated_document.file:
             updated_document.original_name = os.path.basename(updated_document.file.name)
             if not updated_document.title:
                 updated_document.title = updated_document.original_name
             updated_document.save(update_fields=['original_name', 'title'])
+        if replacing_file:
+            new_file_name = updated_document.file.name if updated_document.file else ''
+            if old_file_name and old_file_name != new_file_name:
+                try:
+                    updated_document.file.storage.delete(old_file_name)
+                except Exception:
+                    # keep main update successful even if legacy file cleanup fails
+                    pass
 
     def perform_destroy(self, instance):
         if not _has_directory_permission(self.request.user, instance.directory, 'delete'):
             raise PermissionDenied('当前目录无删除权限。')
+        if instance.file:
+            instance.file.delete(save=False)
         instance.delete()
 
     def _preview_info(self, filename):
