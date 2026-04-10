@@ -182,6 +182,10 @@ const summary = ref({
   lost_count: 0,
   stage_counts: {}
 })
+const cardMoneyFormatter = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+})
 const router = useRouter()
 const auth = useAuthStore()
 const canDelete = computed(() => Boolean(auth.user?.is_staff || auth.user?.permissions?.opportunity?.delete))
@@ -349,7 +353,11 @@ const fetchSummary = async () => {
 
 const totalCount = computed(() => total.value)
 const summaryTotalCount = computed(() => Number(summary.value.total_count || 0))
-const summaryTotalAmount = computed(() => Number(summary.value.total_amount || 0).toFixed(2))
+const summaryTotalAmount = computed(() => {
+  const value = Number(summary.value.total_amount || 0)
+  if (!Number.isFinite(value)) return '0.00'
+  return cardMoneyFormatter.format(value)
+})
 const summaryWonCount = computed(() => Number(summary.value.won_count || 0))
 const summaryLostCount = computed(() => Number(summary.value.lost_count || 0))
 const summaryConversionRate = computed(() => {

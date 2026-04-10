@@ -250,6 +250,10 @@ const summary = ref({
   paid_total: 0,
   receivable_total: 0
 })
+const cardMoneyFormatter = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+})
 const filters = ref({
   status: '',
   approval_status: '',
@@ -445,9 +449,14 @@ const fetchAccounts = async () => {
 }
 
 const totalCount = computed(() => total.value)
-const contractTotal = computed(() => Number(summary.value.contract_total || 0).toFixed(2))
-const paidTotal = computed(() => Number(summary.value.paid_total || 0).toFixed(2))
-const receivableTotal = computed(() => Number(summary.value.receivable_total || 0).toFixed(2))
+const formatCardMoney = (value) => {
+  const amount = Number(value || 0)
+  if (!Number.isFinite(amount)) return '0.00'
+  return cardMoneyFormatter.format(amount)
+}
+const contractTotal = computed(() => formatCardMoney(summary.value.contract_total))
+const paidTotal = computed(() => formatCardMoney(summary.value.paid_total))
+const receivableTotal = computed(() => formatCardMoney(summary.value.receivable_total))
 const listTitle = computed(() => {
   if (isReceivableTab.value) return `共 ${totalCount.value} 份应收合同`
   if (isFrameworkTab.value) return `共 ${totalCount.value} 份框架合同`

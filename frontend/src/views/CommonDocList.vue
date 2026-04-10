@@ -108,14 +108,14 @@
                     :disabled="previewLoading && previewItem?.id === item.id"
                     @click="openPreview(item)"
                   >
-                    {{ previewLoading && previewItem?.id === item.id ? '加载中...' : '预览' }}
+                    {{ previewButtonLabel(item) }}
                   </button>
                   <button
                     class="button secondary"
-                    :disabled="downloadingId === item.id || !(selectedDirectory?.can_download || canManageDirectories)"
+                    :disabled="downloadInProgress(item.id) || !(selectedDirectory?.can_download || canManageDirectories)"
                     @click="downloadDocument(item)"
                   >
-                    {{ downloadingId === item.id ? '下载中...' : '下载' }}
+                    {{ downloadLabel(item) }}
                   </button>
                   <button
                     v-if="selectedDirectory && (selectedDirectory.can_edit || canManageDirectories)"
@@ -131,6 +131,16 @@
                   >
                     删除
                   </button>
+                  <div v-if="downloadProgressFor(item.id)" class="mini-progress-wrap">
+                    <div class="mini-progress-text">{{ downloadProgressText(item.id) }}</div>
+                    <div class="mini-progress">
+                      <div
+                        class="mini-progress-fill"
+                        :class="{ indeterminate: downloadProgressFor(item.id)?.percent == null }"
+                        :style="downloadProgressStyle(downloadProgressFor(item.id))"
+                      ></div>
+                    </div>
+                  </div>
                 </td>
               </tr>
               <tr v-if="!documents.length">
@@ -149,7 +159,16 @@
           {{ previewItem?.title || previewItem?.original_name || '-' }}
         </div>
         <div v-if="previewError" style="color: #c92a2a; margin-bottom: 8px;">{{ previewError }}</div>
-        <div v-if="previewLoading" style="color: #64748b;">加载中...</div>
+        <div v-if="previewLoading" class="mini-progress-wrap preview-progress-wrap">
+          <div class="mini-progress-text">{{ previewProgressText() }}</div>
+          <div class="mini-progress">
+            <div
+              class="mini-progress-fill"
+              :class="{ indeterminate: previewProgress.percent == null }"
+              :style="downloadProgressStyle(previewProgress)"
+            ></div>
+          </div>
+        </div>
         <div v-else-if="previewType === 'image'" class="preview-content">
           <img class="preview-image" :src="previewUrl" alt="文档预览" />
         </div>
@@ -164,10 +183,10 @@
           <button
             v-if="previewItem"
             class="button"
-            :disabled="downloadingId === previewItem.id"
+            :disabled="downloadInProgress(previewItem.id)"
             @click="downloadDocument(previewItem)"
           >
-            {{ downloadingId === previewItem.id ? '下载中...' : '下载' }}
+            {{ downloadLabel(previewItem) }}
           </button>
         </div>
       </div>
@@ -228,7 +247,7 @@ const documents = ref([])
 const error = ref('')
 const search = ref('')
 const savingDoc = ref(false)
-const downloadingId = ref(null)
+const downloadProgressById = ref({})
 const previewLoading = ref(false)
 const showPreviewModal = ref(false)
 const previewItem = ref(null)
@@ -236,6 +255,11 @@ const previewType = ref('')
 const previewText = ref('')
 const previewUrl = ref('')
 const previewError = ref('')
+const previewProgress = ref({
+  loaded: 0,
+  total: 0,
+  percent: null
+})
 
 const newDirectoryName = ref('')
 const renameDirectoryName = ref('')
@@ -276,6 +300,74 @@ const formatFileSize = (value) => {
   }
   if (unitIndex === 0) return `${Math.round(size)} ${units[unitIndex]}`
   return `${size.toFixed(1)} ${units[unitIndex]}`
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const percentOf = (loaded, total) => {
+  if (!Number.isFinite(loaded) || !Number.isFinite(total) || total <= 0) return null
+  return Math.max(0, Math.min(100, Math.round((loaded / total) * 100)))
+}
+
+const setDownloadProgress = (id, loaded, total) => {
+  const percent = percentOf(loaded, total)
+  downloadProgressById.value = {
+    ...downloadProgressById.value,
+    [id]: { loaded, total, percent }
+  }
+}
+
+const clearDownloadProgress = (id) => {
+  const next = { ...downloadProgressById.value }
+  delete next[id]
+  downloadProgressById.value = next
+}
+
+const downloadProgressFor = (id) => downloadProgressById.value[id] || null
+
+const downloadInProgress = (id) => Boolean(downloadProgressFor(id))
+
+const progressDisplay = (progress, withPrefix = true) => {
+  if (!progress) return withPrefix ? '下载' : ''
+  if (progress.percent != null) {
+    return withPrefix ? `下载 ${progress.percent}%` : `${progress.percent}%`
+  }
+  return withPrefix ? `下载 ${formatFileSize(progress.loaded || 0)}` : `已下载 ${formatFileSize(progress.loaded || 0)}`
+}
+
+const downloadLabel = (item) => {
+  const progress = downloadProgressFor(item.id)
+  return progressDisplay(progress, true)
+}
+
+const downloadProgressText = (id) => {
+  const progress = downloadProgressFor(id)
+  return progressDisplay(progress, false)
+}
+
+const previewProgressText = () => {
+  if (previewProgress.value.percent != null) return `预览 ${previewProgress.value.percent}%`
+  return `已加载 ${formatFileSize(previewProgress.value.loaded || 0)}`
+}
+
+const previewButtonLabel = (item) => {
+  if (!previewLoading.value || previewItem.value?.id !== item.id) return '预览'
+  if (previewProgress.value.percent != null) return `预览 ${previewProgress.value.percent}%`
+  return `预览 ${formatFileSize(previewProgress.value.loaded || 0)}`
+}
+
+const downloadProgressStyle = (progress) => {
+  if (!progress) return { width: '0%' }
+  if (progress.percent == null) return { width: '30%' }
+  return { width: `${progress.percent}%` }
+}
+
+const resetPreviewProgress = () => {
+  previewProgress.value = {
+    loaded: 0,
+    total: 0,
+    percent: null
+  }
 }
 
 const fileName = (item) => item?.original_name || item?.title || `doc-${item?.id || 'file'}`
@@ -429,10 +521,15 @@ const parseFilename = (contentDisposition, fallback) => {
 }
 
 const downloadDocument = async (item) => {
-  downloadingId.value = item.id
   error.value = ''
   try {
-    const res = await api.get(`/common-documents/${item.id}/download/`, { responseType: 'blob' })
+    setDownloadProgress(item.id, 0, 0)
+    const res = await api.get(`/common-documents/${item.id}/download/`, {
+      responseType: 'blob',
+      onDownloadProgress: (evt) => {
+        setDownloadProgress(item.id, evt.loaded || 0, evt.total || 0)
+      }
+    })
     const blobUrl = URL.createObjectURL(res.data)
     const filename = parseFilename(
       res.headers?.['content-disposition'],
@@ -443,11 +540,16 @@ const downloadDocument = async (item) => {
     link.download = filename
     link.click()
     URL.revokeObjectURL(blobUrl)
+    const done = downloadProgressFor(item.id)
+    if (done) {
+      setDownloadProgress(item.id, done.total || done.loaded || 0, done.total || done.loaded || 0)
+      await sleep(300)
+    }
   } catch (err) {
     const detail = err.response?.data
     error.value = detail?.detail || '下载失败，请检查权限'
   } finally {
-    downloadingId.value = null
+    clearDownloadProgress(item.id)
   }
 }
 
@@ -458,6 +560,7 @@ const closePreview = () => {
   previewType.value = ''
   previewText.value = ''
   previewError.value = ''
+  resetPreviewProgress()
   clearPreviewBlobUrl()
 }
 
@@ -471,8 +574,18 @@ const openPreview = async (item) => {
   previewLoading.value = true
   previewItem.value = item
   previewType.value = previewKind(item)
+  resetPreviewProgress()
   try {
-    const res = await api.get(`/common-documents/${item.id}/preview/`, { responseType: 'blob' })
+    const res = await api.get(`/common-documents/${item.id}/preview/`, {
+      responseType: 'blob',
+      onDownloadProgress: (evt) => {
+        previewProgress.value = {
+          loaded: evt.loaded || 0,
+          total: evt.total || 0,
+          percent: percentOf(evt.loaded || 0, evt.total || 0)
+        }
+      }
+    })
     const blob = res.data
     if (previewType.value === 'text') {
       if (blob.size > PREVIEW_TEXT_MAX_BYTES) {
@@ -480,9 +593,15 @@ const openPreview = async (item) => {
         return
       }
       previewText.value = await blob.text()
-      return
+    } else {
+      previewUrl.value = URL.createObjectURL(blob)
     }
-    previewUrl.value = URL.createObjectURL(blob)
+    previewProgress.value = {
+      loaded: previewProgress.value.total || previewProgress.value.loaded,
+      total: previewProgress.value.total || previewProgress.value.loaded,
+      percent: previewProgress.value.total ? 100 : null
+    }
+    await sleep(200)
   } catch (err) {
     const detail = err.response?.data
     previewError.value = detail?.detail || '预览失败，请下载查看。'
@@ -655,6 +774,42 @@ onBeforeUnmount(() => {
   min-width: 980px;
 }
 
+.mini-progress-wrap {
+  margin-top: 6px;
+  max-width: 220px;
+}
+
+.mini-progress-text {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.mini-progress {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.mini-progress-fill {
+  height: 100%;
+  background: #2563eb;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.mini-progress-fill.indeterminate {
+  width: 35% !important;
+  animation: progress-slide 1.1s linear infinite;
+}
+
+.preview-progress-wrap {
+  margin-bottom: 8px;
+  max-width: 360px;
+}
+
 .modal-mask {
   position: fixed;
   inset: 0;
@@ -709,6 +864,15 @@ onBeforeUnmount(() => {
   font-size: 13px;
   line-height: 1.5;
   color: #1e293b;
+}
+
+@keyframes progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(380%);
+  }
 }
 
 @media (max-width: 1024px) {

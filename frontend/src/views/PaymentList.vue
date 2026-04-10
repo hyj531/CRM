@@ -136,6 +136,10 @@ const summary = ref({
   total_amount: 0,
   total_count: 0
 })
+const cardMoneyFormatter = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+})
 const regions = ref([])
 const users = ref([])
 const contracts = ref([])
@@ -164,7 +168,11 @@ const statusLabel = (value) => {
 }
 
 const totalCount = computed(() => total.value)
-const totalAmount = computed(() => Number(summary.value.total_amount || 0).toFixed(2))
+const totalAmount = computed(() => {
+  const value = Number(summary.value.total_amount || 0)
+  if (!Number.isFinite(value)) return '0.00'
+  return cardMoneyFormatter.format(value)
+})
 const paidCount = computed(() => payments.value.filter((item) => item.status === 'paid').length)
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
