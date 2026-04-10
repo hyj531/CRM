@@ -83,6 +83,7 @@
             <thead>
               <tr>
                 <th>标题</th>
+                <th>文件大小</th>
                 <th>备注</th>
                 <th>创建人</th>
                 <th>创建时间</th>
@@ -94,6 +95,7 @@
             <tbody>
               <tr v-for="item in documents" :key="item.id">
                 <td>{{ item.title || item.original_name || `文档${item.id}` }}</td>
+                <td>{{ formatFileSize(item.file_size) }}</td>
                 <td>{{ item.description || '-' }}</td>
                 <td>{{ item.created_by_name || '-' }}</td>
                 <td>{{ formatDate(item.created_at) }}</td>
@@ -132,7 +134,7 @@
                 </td>
               </tr>
               <tr v-if="!documents.length">
-                <td colspan="7" style="color: #888;">暂无文档</td>
+                <td colspan="8" style="color: #888;">暂无文档</td>
               </tr>
             </tbody>
           </table>
@@ -260,6 +262,20 @@ const parseListData = (data) => (Array.isArray(data?.results) ? data.results : (
 const formatDate = (value) => {
   if (!value) return '-'
   return String(value).slice(0, 10)
+}
+
+const formatFileSize = (value) => {
+  const bytes = Number(value)
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = bytes
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  if (unitIndex === 0) return `${Math.round(size)} ${units[unitIndex]}`
+  return `${size.toFixed(1)} ${units[unitIndex]}`
 }
 
 const fileName = (item) => item?.original_name || item?.title || `doc-${item?.id || 'file'}`

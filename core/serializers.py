@@ -403,6 +403,7 @@ class CommonDocumentSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
     download_url = serializers.SerializerMethodField(read_only=True)
+    file_size = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.CommonDocument
@@ -417,6 +418,12 @@ class CommonDocumentSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         url = reverse('common-document-download', kwargs={'pk': obj.pk}, request=request)
         return url
+
+    def get_file_size(self, obj):
+        try:
+            return int(obj.file.size) if obj.file else 0
+        except Exception:
+            return 0
 
 
 class DingTalkSyncRequestSerializer(serializers.Serializer):
