@@ -176,9 +176,10 @@
 
       <div class="card">
         <div class="section-title">跟进明细</div>
-        <table class="table" v-if="activities.length">
+        <table class="table followup-detail-table" v-if="activities.length">
           <thead>
             <tr>
+              <th>序号</th>
               <th>目标</th>
               <th>时间</th>
               <th>内容</th>
@@ -186,11 +187,12 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in activities" :key="item.id">
+            <tr v-for="(item, index) in activities" :key="item.id">
+              <td>{{ index + 1 }}</td>
               <td>
-                <button class="link-button" type="button" @click="openFollowupModal(item)">
+                <a class="link-button" href="#" @click.prevent="openFollowupModal(item)">
                   {{ item.subject }}
-                </button>
+                </a>
               </td>
               <td>{{ formatDate(item.due_at) }}</td>
               <td>{{ item.description || '-' }}</td>
@@ -926,5 +928,14 @@ onBeforeUnmount(() => {
 .modal-title {
   font-size: 16px;
   font-weight: 600;
+}
+
+.followup-detail-table th:first-child,
+.followup-detail-table td:first-child {
+  width: 4em;
+  min-width: 4em;
+  max-width: 4em;
+  text-align: center;
+  white-space: nowrap;
 }
 </style>
