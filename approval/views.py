@@ -95,7 +95,7 @@ class ApprovalStepViewSet(RegionScopedViewSet):
 
 
 class ApprovalInstanceViewSet(RegionScopedViewSet):
-    queryset = models.ApprovalInstance.objects.all()
+    queryset = models.ApprovalInstance.objects.select_related('started_by', 'region')
     serializer_class = serializers.ApprovalInstanceSerializer
     scope_owner_field = 'started_by'
 
@@ -114,8 +114,27 @@ class ApprovalInstanceViewSet(RegionScopedViewSet):
         if not target_obj:
             return Response({'detail': 'Target not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        instance = engine.start_approval(target_obj, request.user)
+        try:
+            instance = engine.start_approval(target_obj, request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def withdraw(self, request, pk=None):
+        instance = self.get_object()
+        comment = request.data.get('comment', '')
+        try:
+            instance = engine.withdraw_approval(instance, request.user, comment=comment)
+        except (PermissionError, ValueError) as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(instance).data)
+
+    @action(detail=True, methods=['get'], url_path='detail', url_name='detail')
+    def instance_detail_action(self, request, pk=None):
+        instance = self.get_object()
+        data = engine.get_instance_detail(instance, request=request)
+        return Response(data)
 
 
 class ApprovalTaskViewSet(RegionScopedViewSet):
@@ -141,8 +160,40 @@ class ApprovalTaskViewSet(RegionScopedViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializers.ApprovalInstanceSerializer(instance).data)
 
-    @action(detail=True, methods=['get'])
-    def detail(self, request, pk=None):
+    @action(detail=True, methods=['get'], url_path='detail', url_name='detail')
+    def task_detail_action(self, request, pk=None):
         task = self.get_object()
         data = engine.get_task_detail(task, request=request)
         return Response(data)
+
+    @action(detail=True, methods=['post'])
+    def transfer(self, request, pk=None):
+        task = self.get_object()
+        assignee_id = request.data.get('assignee_id')
+        if not assignee_id:
+            return Response({'detail': 'assignee_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        target_user = core_models.User.objects.filter(id=assignee_id, is_active=True).first()
+        if not target_user:
+            return Response({'detail': 'assignee not found'}, status=status.HTTP_400_BAD_REQUEST)
+        comment = request.data.get('comment', '')
+        try:
+            new_task = engine.transfer_task(task, request.user, target_user, comment=comment)
+        except (PermissionError, ValueError) as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializers.ApprovalTaskSerializer(new_task).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def add_sign(self, request, pk=None):
+        task = self.get_object()
+        assignee_id = request.data.get('assignee_id')
+        if not assignee_id:
+            return Response({'detail': 'assignee_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        target_user = core_models.User.objects.filter(id=assignee_id, is_active=True).first()
+        if not target_user:
+            return Response({'detail': 'assignee not found'}, status=status.HTTP_400_BAD_REQUEST)
+        comment = request.data.get('comment', '')
+        try:
+            new_task = engine.add_sign_task(task, request.user, target_user, comment=comment)
+        except (PermissionError, ValueError) as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializers.ApprovalTaskSerializer(new_task).data, status=status.HTTP_201_CREATED)

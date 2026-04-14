@@ -98,6 +98,27 @@ class RolePermission(models.Model):
         return f"{self.role.name}:{self.module}"
 
 
+class ApprovalModuleSetting(models.Model):
+    SINGLETON_KEY_DEFAULT = 'default'
+
+    singleton_key = models.CharField('单例键', max_length=32, unique=True, default=SINGLETON_KEY_DEFAULT, editable=False)
+    contract_approval_enabled = models.BooleanField('启用合同审批', default=True)
+    invoice_approval_enabled = models.BooleanField('启用开票审批', default=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '审批模块开关'
+        verbose_name_plural = '审批模块开关'
+
+    def save(self, *args, **kwargs):
+        self.singleton_key = self.SINGLETON_KEY_DEFAULT
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return '审批模块开关'
+
+
 class User(AbstractUser):
     region = models.ForeignKey(
         Region, null=True, blank=True, on_delete=models.PROTECT, related_name='users', verbose_name='所属区域'

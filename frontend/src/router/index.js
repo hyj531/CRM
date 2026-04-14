@@ -11,6 +11,7 @@ import ContactList from '../views/ContactList.vue'
 import ContractList from '../views/ContractList.vue'
 import ContractForm from '../views/ContractForm.vue'
 import InvoiceList from '../views/InvoiceList.vue'
+import InvoiceForm from '../views/InvoiceForm.vue'
 import PaymentList from '../views/PaymentList.vue'
 import PaymentForm from '../views/PaymentForm.vue'
 import ActivityList from '../views/ActivityList.vue'
@@ -34,6 +35,8 @@ const routes = [
   { path: '/contracts/new', name: 'contract-create', component: ContractForm },
   { path: '/contracts/:id', name: 'contract-detail', component: ContractForm, props: true },
   { path: '/invoices', name: 'invoices', component: InvoiceList },
+  { path: '/invoices/new', name: 'invoice-create', component: InvoiceForm },
+  { path: '/invoices/:id', name: 'invoice-detail', component: InvoiceForm, props: true },
   { path: '/payments', name: 'payments', component: PaymentList },
   { path: '/payments/new', name: 'payment-create', component: PaymentForm },
   { path: '/payments/:id', name: 'payment-detail', component: PaymentForm, props: true },

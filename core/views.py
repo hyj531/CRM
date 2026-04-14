@@ -19,7 +19,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 
 from core import models, serializers
-from core.services import scoping, dingtalk_client, dingtalk_sync, followup
+from core.services import approval_switches, scoping, dingtalk_client, dingtalk_sync, followup
 from approval import serializers as approval_serializers
 from approval.services import engine as approval_engine
 
@@ -508,7 +508,10 @@ class QuoteViewSet(RegionScopedViewSet):
     @action(detail=True, methods=['post'])
     def submit_approval(self, request, pk=None):
         quote = self.get_object()
-        instance = approval_engine.start_approval(quote, request.user)
+        try:
+            instance = approval_engine.start_approval(quote, request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(approval_serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
 
 
@@ -679,6 +682,8 @@ class ContractViewSet(RegionScopedViewSet):
         from django.db.models.deletion import ProtectedError
 
         contract = self.get_object()
+        if approval_switches.is_contract_approval_enabled() and contract.approval_status == 'pending':
+            return Response({'detail': '合同审批进行中，禁止删除。'}, status=status.HTTP_400_BAD_REQUEST)
         # 先清理回款与附件，避免因外键保护导致无法删除合同
         contract.payments.all().delete()
         contract.attachments.all().delete()
@@ -690,7 +695,12 @@ class ContractViewSet(RegionScopedViewSet):
     @action(detail=True, methods=['post'])
     def submit_approval(self, request, pk=None):
         contract = self.get_object()
-        instance = approval_engine.start_approval(contract, request.user)
+        if not approval_switches.is_contract_approval_enabled():
+            return Response({'detail': '合同审批未启用。'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            instance = approval_engine.start_approval(contract, request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(approval_serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
 
 
@@ -730,10 +740,57 @@ class InvoiceViewSet(RegionScopedViewSet):
     serializer_class = serializers.InvoiceSerializer
     module_code = models.RolePermission.MODULE_INVOICE
     filterset_fields = ['status', 'approval_status', 'contract', 'account', 'owner', 'region']
+    search_fields = ['invoice_no', 'contract__contract_no', 'contract__name', 'account__full_name', 'account__short_name']
+    ordering_fields = ['issued_at', 'amount', 'created_at']
+    ordering = ['-issued_at', '-created_at']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return queryset.select_related('contract', 'account', 'owner', 'region')
+
+    def list(self, request, *args, **kwargs):
+        from django.db.models import DecimalField, Sum, Value
+        from django.db.models.functions import Coalesce
+
+        queryset = self.filter_queryset(self.get_queryset())
+        total_amount = queryset.aggregate(
+            total=Coalesce(
+                Sum('amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        ).get('total') or 0
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            response.data['total_amount'] = total_amount
+            return response
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'count': queryset.count(),
+            'results': serializer.data,
+            'total_amount': total_amount,
+        })
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        start = self.request.query_params.get('issued_at_start')
+        end = self.request.query_params.get('issued_at_end')
+        if start:
+            queryset = queryset.filter(issued_at__gte=start)
+        if end:
+            queryset = queryset.filter(issued_at__lte=end)
+        return queryset
 
     def destroy(self, request, *args, **kwargs):
         from django.db.models.deletion import ProtectedError
 
+        invoice = self.get_object()
+        if approval_switches.is_invoice_approval_enabled() and invoice.approval_status == 'pending':
+            return Response({'detail': '开票审批进行中，禁止删除。'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             return super().destroy(request, *args, **kwargs)
         except ProtectedError:
@@ -742,7 +799,12 @@ class InvoiceViewSet(RegionScopedViewSet):
     @action(detail=True, methods=['post'])
     def submit_approval(self, request, pk=None):
         invoice = self.get_object()
-        instance = approval_engine.start_approval(invoice, request.user)
+        if not approval_switches.is_invoice_approval_enabled():
+            return Response({'detail': '开票审批未启用。'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            instance = approval_engine.start_approval(invoice, request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(approval_serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
 
 
@@ -1136,6 +1198,7 @@ def current_user(request):
         'region': user.region_id,
         'role': user.role_id,
         'permissions': permissions_map,
+        'approval_switches': approval_switches.get_approval_switches(),
     })
 
 

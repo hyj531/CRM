@@ -104,6 +104,18 @@ const formatValue = (value) => {
   return value
 }
 
+const extractErrorMessage = (err, fallback) => {
+  const status = err?.response?.status
+  const detail = err?.response?.data?.detail
+  if (detail) {
+    return detail
+  }
+  if (status) {
+    return `${fallback}（HTTP ${status}）`
+  }
+  return fallback
+}
+
 const fetchDetail = async () => {
   error.value = ''
   success.value = ''
@@ -112,7 +124,7 @@ const fetchDetail = async () => {
     const resp = await api.get(`/approval-tasks/${taskId.value}/detail/`)
     taskDetail.value = resp.data
   } catch (err) {
-    error.value = err.response?.data?.detail || '加载审批信息失败'
+    error.value = extractErrorMessage(err, '加载审批信息失败')
   } finally {
     loading.value = false
   }
@@ -130,7 +142,7 @@ const submitDecision = async (approved) => {
     success.value = approved ? '审批已通过' : '审批已驳回'
     await fetchDetail()
   } catch (err) {
-    error.value = err.response?.data?.detail || '审批提交失败'
+    error.value = extractErrorMessage(err, '审批提交失败')
   } finally {
     decisionLoading.value = false
   }

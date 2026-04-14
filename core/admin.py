@@ -5,7 +5,7 @@ from django.shortcuts import redirect
 from django.urls import path
 
 from core import models
-from core.services import dingtalk_sync
+from core.services import approval_switches, dingtalk_sync
 
 
 @admin.register(models.Opportunity)
@@ -75,6 +75,30 @@ class UserAdmin(DjangoUserAdmin):
             level=messages.SUCCESS,
         )
         return redirect('..')
+
+
+@admin.register(models.ApprovalModuleSetting)
+class ApprovalModuleSettingAdmin(admin.ModelAdmin):
+    list_display = ('contract_approval_enabled', 'invoice_approval_enabled', 'updated_at')
+    readonly_fields = ('singleton_key', 'created_at', 'updated_at')
+    fieldsets = (
+        ('审批开关', {'fields': ('contract_approval_enabled', 'invoice_approval_enabled')}),
+        ('系统字段', {'fields': ('singleton_key', 'created_at', 'updated_at')}),
+    )
+
+    def has_add_permission(self, request):
+        has_base_permission = super().has_add_permission(request)
+        if not has_base_permission:
+            return False
+        return not models.ApprovalModuleSetting.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        obj.singleton_key = models.ApprovalModuleSetting.SINGLETON_KEY_DEFAULT
+        super().save_model(request, obj, form, change)
+        approval_switches.clear_approval_switches_cache()
 
 
 admin.site.register(models.Region)

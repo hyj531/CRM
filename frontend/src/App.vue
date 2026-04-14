@@ -13,6 +13,7 @@
         <router-link to="/opportunities"><span class="nav-icon">◎</span>商机管理</router-link>
         <router-link to="/accounts"><span class="nav-icon">◼</span>客户管理</router-link>
         <router-link to="/contracts"><span class="nav-icon">▣</span>合同管理</router-link>
+        <router-link to="/invoices"><span class="nav-icon">◉</span>开票管理</router-link>
         <router-link to="/payments"><span class="nav-icon">◆</span>回款管理</router-link>
         <router-link v-if="canAccessCommonDocs" to="/common-docs"><span class="nav-icon">◧</span>常用文档</router-link>
       </nav>
@@ -135,9 +136,9 @@ const goApprovals = () => {
 }
 
 onMounted(async () => {
-  if (auth.accessToken && !auth.user) {
+  if (auth.accessToken) {
     try {
-      await auth.fetchMe()
+      await auth.ensureMeFresh(60000)
     } catch (err) {
       auth.logout()
     }

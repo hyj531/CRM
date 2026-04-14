@@ -24,6 +24,14 @@
         <button class="button" :disabled="saving" @click="save">
           {{ saving ? '保存中...' : (isEdit ? '保存修改' : '保存合同') }}
         </button>
+        <button
+          v-if="showContractSubmitApproval"
+          class="button secondary"
+          :disabled="submittingApproval"
+          @click="submitApproval"
+        >
+          {{ submittingApproval ? '提交中...' : '提交审批' }}
+        </button>
         <button class="button secondary" @click="cancel">取消</button>
       </div>
     </div>
@@ -182,7 +190,12 @@
         </div>
         <div>
           <label>审批状态</label>
-          <select v-model="form.approval_status">
+          <input
+            v-if="contractApprovalEnabled"
+            :value="approvalLabel(form.approval_status)"
+            disabled
+          />
+          <select v-else v-model="form.approval_status">
             <option value="pending">待审批</option>
             <option value="approved">已通过</option>
             <option value="rejected">已驳回</option>
@@ -354,6 +367,119 @@
       </div>
     </div>
 
+    <div class="card">
+      <div class="section-title">开票明细</div>
+      <div v-if="!isEdit" style="color: #888;">保存合同后可录入开票明细</div>
+      <div v-else>
+        <div class="form-grid">
+          <div>
+            <label>开票编号</label>
+            <input v-model="invoiceForm.invoice_no" />
+          </div>
+          <div>
+            <label>开票金额</label>
+            <input v-model.number="invoiceForm.amount" type="number" />
+          </div>
+          <div>
+            <label>开票时间</label>
+            <input v-model="invoiceForm.issued_at" type="date" />
+          </div>
+          <div>
+            <label>税率</label>
+            <input v-model.number="invoiceForm.tax_rate" type="number" step="0.01" />
+          </div>
+          <div>
+            <label>开票类型</label>
+            <select v-model="invoiceForm.invoice_type">
+              <option value="normal">普票</option>
+              <option value="special">专票</option>
+            </select>
+          </div>
+          <div>
+            <label>开票状态</label>
+            <select v-model="invoiceForm.status">
+              <option value="draft">草稿</option>
+              <option value="issued">已开票</option>
+              <option value="paid">已回款</option>
+              <option value="void">已作废</option>
+            </select>
+          </div>
+          <div>
+            <label>所属区域</label>
+            <select v-model.number="invoiceForm.region">
+              <option :value="null">请选择所属区域</option>
+              <option v-for="r in regions" :key="r.id" :value="r.id">
+                {{ r.name || r.code || `ID ${r.id}` }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label>负责人</label>
+            <select v-model.number="invoiceForm.owner">
+              <option :value="null">请选择负责人</option>
+              <option v-for="u in users" :key="u.id" :value="u.id">
+                {{ u.username || u.email || `ID ${u.id}` }}
+              </option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top: 10px;">
+          <button class="button" :disabled="invoiceSaving || !invoiceForm.amount" @click="saveInvoice">
+            {{ invoiceSaving ? '保存中...' : (editingInvoiceId ? '保存修改' : '保存开票') }}
+          </button>
+          <button
+            v-if="editingInvoiceId"
+            class="button secondary"
+            style="margin-left: 8px;"
+            @click="cancelEditInvoice"
+          >
+            取消编辑
+          </button>
+          <span v-if="invoiceError" style="margin-left: 10px; color: #c92a2a;">{{ invoiceError }}</span>
+          <span v-if="invoiceSuccess" style="margin-left: 10px; color: #2b8a3e;">{{ invoiceSuccess }}</span>
+        </div>
+        <div style="margin-top: 12px;">
+          <table class="table" v-if="invoices.length">
+            <thead>
+              <tr>
+                <th>开票编号</th>
+                <th>开票金额</th>
+                <th>开票时间</th>
+                <th>税率</th>
+                <th>类型</th>
+                <th>状态</th>
+                <th>审批</th>
+                <th>所属区域</th>
+                <th>负责人</th>
+                <th>时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in invoices" :key="item.id">
+                <td>{{ item.invoice_no || '-' }}</td>
+                <td>{{ item.amount }}</td>
+                <td>{{ item.issued_at || '-' }}</td>
+                <td>{{ item.tax_rate ?? '-' }}</td>
+                <td>{{ invoiceTypeLabel(item.invoice_type) }}</td>
+                <td>{{ invoiceStatusLabel(item.status) }}</td>
+                <td>{{ approvalLabel(item.approval_status) }}</td>
+                <td>{{ item.region_name || item.region || '-' }}</td>
+                <td>{{ item.owner_name || item.owner || '-' }}</td>
+                <td>{{ item.created_at || '-' }}</td>
+                <td>
+                  <router-link class="link-button" :to="`/invoices/${item.id}`">详情</router-link>
+                  <button class="button secondary" @click="startEditInvoice(item)">编辑</button>
+                  <button class="button secondary" @click="deleteInvoice(item.id)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else style="color: #888;">暂无开票记录</div>
+        </div>
+      </div>
+    </div>
+
     <div v-if="isEdit && form.is_framework" class="card">
       <div class="section-title">合同明细</div>
       <div v-if="childContractsError" style="color: #c92a2a; margin-bottom: 8px;">
@@ -454,6 +580,21 @@ const editingPaymentId = ref(null)
 const paymentSaving = ref(false)
 const paymentError = ref('')
 const paymentSuccess = ref('')
+const invoices = ref([])
+const invoiceForm = ref({
+  invoice_no: '',
+  amount: null,
+  issued_at: '',
+  tax_rate: null,
+  invoice_type: 'normal',
+  status: 'draft',
+  region: null,
+  owner: null
+})
+const editingInvoiceId = ref(null)
+const invoiceSaving = ref(false)
+const invoiceError = ref('')
+const invoiceSuccess = ref('')
 const paidTotal = ref(0)
 const lookupOptions = ref({
   vendor_company: []
@@ -470,6 +611,9 @@ const accountCreate = ref({
 })
 const accountCreateSaving = ref(false)
 const accountCreateError = ref('')
+const contractFlowLoaded = ref(false)
+const contractHasGlobalFlow = ref(false)
+const contractActiveRegionIds = ref([])
 
 const form = ref({
   contract_no: '',
@@ -497,6 +641,18 @@ const form = ref({
 })
 
 const isEdit = computed(() => Boolean(route.params.id))
+const contractApprovalEnabled = computed(() => auth.user?.approval_switches?.contract !== false)
+const contractFlowEnabled = computed(() => {
+  if (!contractFlowLoaded.value) return true
+  const regionId = form.value.region != null ? Number(form.value.region) : null
+  if (regionId != null && contractActiveRegionIds.value.includes(regionId)) {
+    return true
+  }
+  return contractHasGlobalFlow.value
+})
+const showContractSubmitApproval = computed(() => (
+  isEdit.value && contractApprovalEnabled.value && contractFlowEnabled.value
+))
 const headerTitle = computed(() => {
   if (!isEdit.value) return '新建合同'
   return form.value.name || form.value.contract_no || '合同详情'
@@ -589,6 +745,29 @@ const fetchFrameworkContracts = async () => {
     frameworkContracts.value = Array.isArray(res.data?.results) ? res.data.results : res.data
   } catch (err) {
     frameworkContracts.value = []
+  }
+}
+
+const fetchContractApprovalFlowConfig = async () => {
+  contractFlowLoaded.value = false
+  contractHasGlobalFlow.value = false
+  contractActiveRegionIds.value = []
+  try {
+    const res = await api.get('/approval-flows/', {
+      params: { page: 1, page_size: 1000, ordering: '-id' }
+    })
+    const flows = Array.isArray(res.data?.results)
+      ? res.data.results
+      : (Array.isArray(res.data) ? res.data : [])
+    const activeContractFlows = flows.filter((item) => item?.target_type === 'contract' && item?.is_active)
+    contractHasGlobalFlow.value = activeContractFlows.some((item) => item?.region == null)
+    contractActiveRegionIds.value = activeContractFlows
+      .map((item) => item?.region)
+      .filter((value) => value != null)
+      .map((value) => Number(value))
+    contractFlowLoaded.value = true
+  } catch (err) {
+    // Keep default visible on fetch failure to avoid blocking valid submissions.
   }
 }
 
@@ -694,11 +873,33 @@ const applyPaymentDefaults = () => {
   }
 }
 
+const applyInvoiceDefaults = () => {
+  if (invoiceForm.value.region == null && form.value.region != null) {
+    invoiceForm.value.region = Number(form.value.region)
+  }
+  if (invoiceForm.value.owner == null && form.value.owner != null) {
+    invoiceForm.value.owner = Number(form.value.owner)
+  }
+}
+
 const resetPaymentForm = () => {
   paymentForm.value = {
     amount: null,
     paid_at: '',
     note: '',
+    region: form.value.region != null ? Number(form.value.region) : null,
+    owner: form.value.owner != null ? Number(form.value.owner) : null
+  }
+}
+
+const resetInvoiceForm = () => {
+  invoiceForm.value = {
+    invoice_no: '',
+    amount: null,
+    issued_at: '',
+    tax_rate: null,
+    invoice_type: 'normal',
+    status: 'draft',
     region: form.value.region != null ? Number(form.value.region) : null,
     owner: form.value.owner != null ? Number(form.value.owner) : null
   }
@@ -748,6 +949,24 @@ const paymentStatusLabel = (value) => {
     planned: '计划中',
     partial: '部分回款',
     paid: '已回款'
+  }
+  return map[value] || value || '-'
+}
+
+const invoiceStatusLabel = (value) => {
+  const map = {
+    draft: '草稿',
+    issued: '已开票',
+    paid: '已回款',
+    void: '已作废'
+  }
+  return map[value] || value || '-'
+}
+
+const invoiceTypeLabel = (value) => {
+  const map = {
+    normal: '普票',
+    special: '专票'
   }
   return map[value] || value || '-'
 }
@@ -840,6 +1059,9 @@ const loadContract = async () => {
     if (!editingPaymentId.value) {
       applyPaymentDefaults()
     }
+    if (!editingInvoiceId.value) {
+      applyInvoiceDefaults()
+    }
     await fetchChildContracts()
   } catch (err) {
     error.value = '加载合同失败，请确认该合同存在且有权限访问'
@@ -898,6 +1120,14 @@ const fetchPayments = async () => {
   paidTotal.value = payments.value.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
 }
 
+const fetchInvoices = async () => {
+  if (!isEdit.value) return
+  const res = await api.get('/invoices/', {
+    params: { contract: route.params.id, ordering: '-issued_at', page: 1, page_size: 50 }
+  })
+  invoices.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
 const startEditPayment = (item) => {
   editingPaymentId.value = item.id
   paymentForm.value = {
@@ -916,6 +1146,29 @@ const cancelEditPayment = () => {
   resetPaymentForm()
   paymentError.value = ''
   paymentSuccess.value = ''
+}
+
+const startEditInvoice = (item) => {
+  editingInvoiceId.value = item.id
+  invoiceForm.value = {
+    invoice_no: item.invoice_no || '',
+    amount: item.amount != null ? Number(item.amount) : null,
+    issued_at: item.issued_at || '',
+    tax_rate: item.tax_rate != null ? Number(item.tax_rate) : null,
+    invoice_type: item.invoice_type || 'normal',
+    status: item.status || 'draft',
+    region: item.region != null ? Number(item.region) : (form.value.region != null ? Number(form.value.region) : null),
+    owner: item.owner != null ? Number(item.owner) : (form.value.owner != null ? Number(form.value.owner) : null)
+  }
+  invoiceError.value = ''
+  invoiceSuccess.value = ''
+}
+
+const cancelEditInvoice = () => {
+  editingInvoiceId.value = null
+  resetInvoiceForm()
+  invoiceError.value = ''
+  invoiceSuccess.value = ''
 }
 
 const savePayment = async () => {
@@ -977,6 +1230,71 @@ const savePayment = async () => {
   }
 }
 
+const saveInvoice = async () => {
+  if (!invoiceForm.value.amount) {
+    invoiceError.value = '开票金额不能为空'
+    return
+  }
+  if (!invoiceForm.value.region) {
+    invoiceError.value = '请选择所属区域'
+    return
+  }
+  if (!invoiceForm.value.owner) {
+    invoiceError.value = '请选择负责人'
+    return
+  }
+  invoiceError.value = ''
+  invoiceSuccess.value = ''
+  invoiceSaving.value = true
+  try {
+    if (editingInvoiceId.value) {
+      const payload = {
+        invoice_no: invoiceForm.value.invoice_no || '',
+        amount: Number(invoiceForm.value.amount),
+        issued_at: invoiceForm.value.issued_at || null,
+        tax_rate: invoiceForm.value.tax_rate === '' ? null : invoiceForm.value.tax_rate,
+        invoice_type: invoiceForm.value.invoice_type || 'normal',
+        status: invoiceForm.value.status || 'draft',
+        region: Number(invoiceForm.value.region),
+        owner: Number(invoiceForm.value.owner)
+      }
+      await api.patch(`/invoices/${editingInvoiceId.value}/`, payload)
+      invoiceSuccess.value = '开票已更新'
+      editingInvoiceId.value = null
+      resetInvoiceForm()
+    } else {
+      const payload = {
+        contract: Number(route.params.id),
+        account: form.value.account ? Number(form.value.account) : null,
+        invoice_no: invoiceForm.value.invoice_no || '',
+        amount: Number(invoiceForm.value.amount),
+        issued_at: invoiceForm.value.issued_at || null,
+        tax_rate: invoiceForm.value.tax_rate === '' ? null : invoiceForm.value.tax_rate,
+        invoice_type: invoiceForm.value.invoice_type || 'normal',
+        status: invoiceForm.value.status || 'draft',
+        region: Number(invoiceForm.value.region),
+        owner: Number(invoiceForm.value.owner)
+      }
+      await api.post('/invoices/', payload)
+      resetInvoiceForm()
+      invoiceSuccess.value = '开票已保存'
+    }
+    await fetchInvoices()
+  } catch (err) {
+    const detail = err.response?.data
+    if (detail && typeof detail === 'object') {
+      const messages = Object.entries(detail)
+        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join('；') : value}`)
+        .join(' | ')
+      invoiceError.value = messages || '保存失败，请检查必填项或后端服务'
+    } else {
+      invoiceError.value = '保存失败，请检查必填项或后端服务'
+    }
+  } finally {
+    invoiceSaving.value = false
+  }
+}
+
 const deletePayment = async (id) => {
   if (!confirm('确认删除该回款记录？')) return
   paymentError.value = ''
@@ -1003,6 +1321,32 @@ const deletePayment = async (id) => {
   }
 }
 
+const deleteInvoice = async (id) => {
+  if (!confirm('确认删除该开票记录？')) return
+  invoiceError.value = ''
+  invoiceSuccess.value = ''
+  try {
+    await api.delete(`/invoices/${id}/`)
+    invoiceSuccess.value = '开票已删除'
+    if (editingInvoiceId.value === id) {
+      cancelEditInvoice()
+    }
+    await fetchInvoices()
+  } catch (err) {
+    const status = err.response?.status
+    if (status === 403) {
+      invoiceError.value = '无删除权限'
+    } else {
+      const detail = err.response?.data
+      if (detail && typeof detail === 'object') {
+        invoiceError.value = detail.detail || '删除失败，请检查权限或后端服务'
+      } else {
+        invoiceError.value = '删除失败，请检查权限或后端服务'
+      }
+    }
+  }
+}
+
 const normalizePayload = () => ({
   contract_no: form.value.contract_no || '',
   name: form.value.name || '',
@@ -1020,7 +1364,7 @@ const normalizePayload = () => ({
   current_output: form.value.current_output === '' ? null : form.value.current_output,
   final_settlement_amount: form.value.final_settlement_amount === '' ? null : form.value.final_settlement_amount,
   status: form.value.status,
-  approval_status: form.value.approval_status,
+  ...(contractApprovalEnabled.value ? {} : { approval_status: form.value.approval_status }),
   signed_at: form.value.signed_at || null,
   start_date: form.value.start_date || null,
   end_date: form.value.end_date || null
@@ -1082,7 +1426,7 @@ const save = async () => {
 }
 
 const submitApproval = async () => {
-  if (!isEdit.value) return
+  if (!showContractSubmitApproval.value) return
   error.value = ''
   success.value = ''
   submittingApproval.value = true
@@ -1111,9 +1455,8 @@ const goBack = () => {
 }
 
 onMounted(async () => {
-  if (!auth.user) {
-    await auth.fetchMe()
-  }
+  await auth.ensureMeFresh(60000)
+  await fetchContractApprovalFlowConfig()
   await fetchLookups()
   await fetchOpportunities()
   await fetchRegions()
@@ -1122,8 +1465,10 @@ onMounted(async () => {
   await loadContract()
   await fetchAttachments()
   await fetchPayments()
+  await fetchInvoices()
   applyDefaultOwnerRegion()
   applyPaymentDefaults()
+  applyInvoiceDefaults()
   if (route.query.saved) {
     success.value = '合同已保存'
   }

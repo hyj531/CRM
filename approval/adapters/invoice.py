@@ -29,7 +29,13 @@ class InvoiceApprovalAdapter(BaseApprovalAdapter):
         return obj.invoice_no or f'开票{obj.id}'
 
     def set_approval_status(self, obj, status):
+        status_map = {
+            'pending': 'pending',
+            'approved': 'approved',
+            'rejected': 'rejected',
+            'withdrawn': 'pending',
+        }
         if hasattr(obj, 'approval_status'):
-            obj.approval_status = status
+            obj.approval_status = status_map.get(status, 'pending')
             obj.save(update_fields=['approval_status'])
         return obj

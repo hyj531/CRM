@@ -4,6 +4,7 @@ from rest_framework.reverse import reverse
 from django.db.models import Sum
 
 from core import models
+from core.services import approval_switches
 
 User = get_user_model()
 
@@ -260,6 +261,15 @@ class ContractSerializer(serializers.ModelSerializer):
             'updated_by': {'read_only': True},
         }
 
+    def _approval_status_managed_by_system(self):
+        return approval_switches.is_contract_approval_enabled()
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if self._approval_status_managed_by_system() and 'approval_status' in fields:
+            fields['approval_status'].read_only = True
+        return fields
+
     def validate(self, attrs):
         vendor = attrs.get('vendor_company')
         if vendor and vendor.category.code != 'vendor_company':
@@ -271,6 +281,16 @@ class ContractSerializer(serializers.ModelSerializer):
             if self.instance and framework_contract.id == self.instance.id:
                 raise serializers.ValidationError({'framework_contract': '所属框架合同不能为自身'})
         return attrs
+
+    def create(self, validated_data):
+        if self._approval_status_managed_by_system():
+            validated_data.pop('approval_status', None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if self._approval_status_managed_by_system():
+            validated_data.pop('approval_status', None)
+        return super().update(instance, validated_data)
 
     def get_receivable_amount(self, obj):
         paid_total = getattr(obj, 'paid_total', None)
@@ -315,6 +335,25 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'owner': {'required': False},
             'region': {'required': False},
         }
+
+    def _approval_status_managed_by_system(self):
+        return approval_switches.is_invoice_approval_enabled()
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if self._approval_status_managed_by_system() and 'approval_status' in fields:
+            fields['approval_status'].read_only = True
+        return fields
+
+    def create(self, validated_data):
+        if self._approval_status_managed_by_system():
+            validated_data.pop('approval_status', None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if self._approval_status_managed_by_system():
+            validated_data.pop('approval_status', None)
+        return super().update(instance, validated_data)
 
 
 class PaymentSerializer(serializers.ModelSerializer):

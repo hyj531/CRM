@@ -31,11 +31,23 @@ python manage.py runserver
 - `DINGTALK_ACCESS_TOKEN`：组织同步用 access token
 - `DINGTALK_DEPT_LIST_URL` / `DINGTALK_USER_LIST_URL`
 - `DINGTALK_SYNC_FILE`：本地 JSON 同步文件路径（用于离线导入）
+- `DINGTALK_TODO_ENABLED`：审批待办开关（`1/0`）
+- `DINGTALK_TODO_CREATE_URL` / `DINGTALK_TODO_COMPLETE_URL`
+- `DINGTALK_TODO_OPERATOR_UNION_ID`
+- `DINGTALK_OWN_OA_PROCESS_CODE` / `DINGTALK_OWN_OA_CREATE_URL`
+- `DINGTALK_OWN_OA_FORM_LABEL`
+- `FRONTEND_BASE_URL`：审批详情页面基地址
 
 ## 钉钉组织同步
 
 ```bash
 python manage.py sync_dingtalk
+```
+
+## 审批待办队列处理
+
+```bash
+python manage.py process_approval_todo_outbox --batch-size 100 --max-rounds 3
 ```
 
 ### 离线 JSON 示例

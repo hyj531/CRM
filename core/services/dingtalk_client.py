@@ -127,6 +127,27 @@ def _fetch_oapi_department_ids(dept_url, access_token, root_dept_id=1, fetch_chi
     return dept_ids
 
 
+def _fetch_oapi_all_department_ids(dept_url, access_token, root_dept_id=1):
+    root = str(root_dept_id)
+    ordered_ids = [root]
+    seen = {root}
+    queue = [root]
+
+    # Traverse level by level to avoid relying on fetch_child recursion behavior.
+    while queue:
+        current = queue.pop(0)
+        child_ids = _fetch_oapi_department_ids(dept_url, access_token, root_dept_id=current, fetch_child=False)
+        for child_id in child_ids:
+            child = str(child_id)
+            if child == current or child in seen:
+                continue
+            seen.add(child)
+            ordered_ids.append(child)
+            queue.append(child)
+
+    return ordered_ids
+
+
 def _fetch_oapi_department_detail(access_token, dept_id):
     detail_url = _get_setting('DEPT_DETAIL_URL') or 'https://oapi.dingtalk.com/topapi/v2/department/get'
     response = _oapi_post(
@@ -232,7 +253,7 @@ def fetch_departments():
     else:
         # OAPI listsubid: get all dept ids (recursive), then fetch details.
         if 'listsubid' in dept_url:
-            dept_ids = _fetch_oapi_department_ids(dept_url, access_token, root_dept_id=1, fetch_child=True)
+            dept_ids = _fetch_oapi_all_department_ids(dept_url, access_token, root_dept_id=1)
             departments = []
             for dept_id in dept_ids:
                 detail = _fetch_oapi_department_detail(access_token, dept_id)
@@ -249,6 +270,30 @@ def fetch_departments():
     response.raise_for_status()
     payload = response.json()
     return payload.get('departments') or payload.get('department') or []
+
+
+def fetch_department_ids():
+    dept_url = _require_setting('DEPT_LIST_URL')
+    access_token = _get_app_access_token_for_url(dept_url)
+    if _is_openapi_url(dept_url):
+        departments = fetch_departments() or []
+        ids = []
+        for dept in departments:
+            dept_id = dept.get('id') or dept.get('dept_id')
+            if dept_id is not None:
+                ids.append(str(dept_id))
+        return ids
+
+    if 'listsubid' in dept_url:
+        return _fetch_oapi_all_department_ids(dept_url, access_token, root_dept_id=1)
+
+    departments = fetch_departments() or []
+    ids = []
+    for dept in departments:
+        dept_id = dept.get('id') or dept.get('dept_id')
+        if dept_id is not None:
+            ids.append(str(dept_id))
+    return ids
 
 
 def fetch_department_users(dept_id):
