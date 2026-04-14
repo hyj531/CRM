@@ -43,6 +43,7 @@
             <option value="pending">待审批</option>
             <option value="approved">已通过</option>
             <option value="rejected">已驳回</option>
+            <option value="revising">修订中</option>
           </select>
           <div class="filter-autocomplete">
             <input
@@ -297,7 +298,8 @@ const approvalLabel = (value) => {
   const map = {
     pending: '待审批',
     approved: '已通过',
-    rejected: '已驳回'
+    rejected: '已驳回',
+    revising: '修订中'
   }
   return map[value] || value || '-'
 }
@@ -310,6 +312,7 @@ const statusBadgeClass = (value) => {
 
 const approvalBadgeClass = (value) => {
   if (value === 'approved') return 'green'
+  if (value === 'revising') return 'orange'
   if (value === 'rejected') return 'gray'
   return 'orange'
 }

@@ -126,6 +126,7 @@ class User(AbstractUser):
     role = models.ForeignKey(
         Role, null=True, blank=True, on_delete=models.PROTECT, related_name='users', verbose_name='角色'
     )
+    roles = models.ManyToManyField(Role, blank=True, related_name='multi_role_users', verbose_name='角色列表')
     dingtalk_user_id = models.CharField('钉钉用户ID', max_length=80, blank=True)
     dingtalk_union_id = models.CharField('钉钉UnionID', max_length=80, blank=True)
     phone = models.CharField('手机号', max_length=50, blank=True)
@@ -463,6 +464,19 @@ class Quote(OwnedRegionModel):
         return f"Quote {self.id}"
 
 
+class ContractNoSequence(models.Model):
+    sequence_date = models.DateField('日期', unique=True)
+    last_serial = models.PositiveIntegerField('最后流水号', default=0)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '合同编号日流水'
+        verbose_name_plural = '合同编号日流水'
+
+    def __str__(self):
+        return f"{self.sequence_date}:{self.last_serial:03d}"
+
+
 class Contract(OwnedRegionModel):
     STATUSES = [
         ('draft', '草稿'),
@@ -474,6 +488,7 @@ class Contract(OwnedRegionModel):
         ('pending', '待审批'),
         ('approved', '已审批'),
         ('rejected', '已驳回'),
+        ('revising', '修订中'),
     ]
 
     contract_no = models.CharField('合同编号', max_length=100, blank=True)

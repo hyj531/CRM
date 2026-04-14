@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count, Sum, Q
 import csv
 import json
@@ -19,7 +20,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 
 from core import models, serializers
-from core.services import approval_switches, scoping, dingtalk_client, dingtalk_sync, followup
+from core.services import approval_switches, scoping, dingtalk_client, dingtalk_sync, followup, role_access, contract_no
+from approval import models as approval_models
 from approval import serializers as approval_serializers
 from approval.services import engine as approval_engine
 
@@ -49,14 +51,17 @@ def _parse_bool(value):
 def _has_directory_permission(user, directory, permission_key):
     if _is_admin(user):
         return True
-    if not user or not user.is_authenticated or not directory or not user.role_id:
+    if not user or not user.is_authenticated or not directory:
         return False
     field_name = DIRECTORY_PERMISSION_FIELD_MAP.get(permission_key)
     if not field_name:
         return False
+    role_ids = role_access.get_user_role_ids(user)
+    if not role_ids:
+        return False
     return models.CommonDocDirectoryPermission.objects.filter(
         directory=directory,
-        role_id=user.role_id,
+        role_id__in=role_ids,
         **{field_name: True}
     ).exists()
 
@@ -131,14 +136,8 @@ class DeleteRequiresStaffPermission(permissions.BasePermission):
             user = request.user
             if not user or not user.is_authenticated:
                 return False
-            if user.is_staff or user.is_superuser:
-                return True
-            role = getattr(user, 'role', None)
             module = getattr(view, 'module_code', None)
-            if not role or not module:
-                return False
-            perm = models.RolePermission.objects.filter(role=role, module=module).first()
-            return bool(perm and perm.can_delete)
+            return role_access.has_module_permission(user, module, 'delete')
         return request.user and request.user.is_authenticated
 
 
@@ -231,7 +230,7 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = serializers.UserSerializer
     permission_classes = [ReadOnlyOrStaffPermission]
-    filterset_fields = ['region', 'role', 'is_active', 'is_staff']
+    filterset_fields = ['region', 'role', 'roles', 'is_active', 'is_staff']
     search_fields = ['username', 'email', 'first_name', 'last_name', 'phone']
 
     def get_queryset(self):
@@ -532,7 +531,13 @@ class ContractViewSet(RegionScopedViewSet):
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
 
+        try:
+            generated_contract_no = contract_no.generate_next_contract_no()
+        except contract_no.ContractNoOverflowError as exc:
+            raise ValidationError({'contract_no': str(exc)})
+
         kwargs = {'created_by': self.request.user, 'updated_by': self.request.user}
+        kwargs['contract_no'] = generated_contract_no
         if 'owner' in serializer.fields and 'owner' not in serializer.validated_data:
             kwargs['owner'] = self.request.user
         if 'region' in serializer.fields and 'region' not in serializer.validated_data:
@@ -703,6 +708,35 @@ class ContractViewSet(RegionScopedViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(approval_serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'])
+    def start_revision(self, request, pk=None):
+        contract = self.get_object()
+        if not approval_switches.is_contract_approval_enabled():
+            return Response({'detail': '合同审批未启用。'}, status=status.HTTP_400_BAD_REQUEST)
+        if contract.approval_status != 'approved':
+            return Response({'detail': '仅审批通过的合同可发起修订。'}, status=status.HTTP_400_BAD_REQUEST)
+
+        content_type = ContentType.objects.get_for_model(models.Contract)
+        has_pending_instance = approval_models.ApprovalInstance.objects.filter(
+            content_type=content_type,
+            object_id=contract.id,
+            status=approval_models.ApprovalInstance.STATUS_PENDING,
+        ).exists()
+        if has_pending_instance:
+            return Response({'detail': '当前合同已有进行中的审批，无法发起修订。'}, status=status.HTTP_400_BAD_REQUEST)
+
+        contract.approval_status = 'revising'
+        contract.updated_by = request.user
+        contract.save(update_fields=['approval_status', 'updated_by', 'updated_at'])
+        serializer = self.get_serializer(contract)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'])
+    def approval_progress(self, request, pk=None):
+        contract = self.get_object()
+        data = approval_engine.get_target_approval_progress(contract)
+        return Response(data)
+
 
 class ContractAttachmentViewSet(RegionScopedViewSet):
     queryset = models.ContractAttachment.objects.all()
@@ -806,6 +840,12 @@ class InvoiceViewSet(RegionScopedViewSet):
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(approval_serializers.ApprovalInstanceSerializer(instance).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def approval_progress(self, request, pk=None):
+        invoice = self.get_object()
+        data = approval_engine.get_target_approval_progress(invoice)
+        return Response(data)
 
 
 class PaymentViewSet(RegionScopedViewSet):
@@ -915,10 +955,11 @@ class CommonDocDirectoryViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if _is_admin(user):
             return queryset
-        if not user.role_id:
+        role_ids = role_access.get_user_role_ids(user)
+        if not role_ids:
             return queryset.none()
         allowed_directory_ids = models.CommonDocDirectoryPermission.objects.filter(
-            role_id=user.role_id,
+            role_id__in=role_ids,
             can_view=True
         ).values('directory_id')
         return queryset.filter(id__in=allowed_directory_ids)
@@ -926,11 +967,27 @@ class CommonDocDirectoryViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         user = self.request.user
-        if not _is_admin(user) and user and user.is_authenticated and user.role_id:
-            permissions_qs = models.CommonDocDirectoryPermission.objects.filter(role_id=user.role_id)
-            context['directory_permission_map'] = {
-                perm.directory_id: perm for perm in permissions_qs
-            }
+        role_ids = role_access.get_user_role_ids(user)
+        if not _is_admin(user) and user and user.is_authenticated and role_ids:
+            permissions_qs = models.CommonDocDirectoryPermission.objects.filter(role_id__in=role_ids)
+            permission_map = {}
+            for perm in permissions_qs:
+                item = permission_map.setdefault(
+                    perm.directory_id,
+                    {
+                        'can_view': False,
+                        'can_download': False,
+                        'can_upload': False,
+                        'can_edit': False,
+                        'can_delete': False,
+                    },
+                )
+                item['can_view'] = item['can_view'] or bool(perm.can_view)
+                item['can_download'] = item['can_download'] or bool(perm.can_download)
+                item['can_upload'] = item['can_upload'] or bool(perm.can_upload)
+                item['can_edit'] = item['can_edit'] or bool(perm.can_edit)
+                item['can_delete'] = item['can_delete'] or bool(perm.can_delete)
+            context['directory_permission_map'] = permission_map
         return context
 
     def perform_create(self, serializer):
@@ -1062,10 +1119,11 @@ class CommonDocumentViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if _is_admin(user):
             return queryset
-        if not user.role_id:
+        role_ids = role_access.get_user_role_ids(user)
+        if not role_ids:
             return queryset.none()
         allowed_directory_ids = models.CommonDocDirectoryPermission.objects.filter(
-            role_id=user.role_id,
+            role_id__in=role_ids,
             can_view=True
         ).values('directory_id')
         return queryset.filter(directory_id__in=allowed_directory_ids)
@@ -1180,23 +1238,17 @@ class CommonDocumentViewSet(viewsets.ModelViewSet):
 @permission_classes([permissions.IsAuthenticated])
 def current_user(request):
     user = request.user
-    permissions_map = {}
-    role = getattr(user, 'role', None)
-    if role:
-        for perm in models.RolePermission.objects.filter(role=role):
-            permissions_map[perm.module] = {
-                'create': perm.can_create,
-                'update': perm.can_update,
-                'delete': perm.can_delete,
-                'approve': perm.can_approve,
-            }
+    role_ids = role_access.get_user_role_ids(user)
+    permissions_map = role_access.build_permissions_map(user)
     return Response({
         'id': user.id,
         'username': user.username,
         'is_staff': user.is_staff,
         'is_superuser': user.is_superuser,
+        'can_manage_approval_config': bool(user.is_staff or user.is_superuser),
         'region': user.region_id,
-        'role': user.role_id,
+        'role': role_ids[0] if role_ids else None,
+        'roles': role_ids,
         'permissions': permissions_map,
         'approval_switches': approval_switches.get_approval_switches(),
     })

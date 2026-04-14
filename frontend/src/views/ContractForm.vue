@@ -21,8 +21,16 @@
         </div>
       </div>
       <div class="page-actions">
-        <button class="button" :disabled="saving" @click="save">
+        <button class="button" :disabled="saving || pendingApprovalReadonly" @click="save">
           {{ saving ? '保存中...' : (isEdit ? '保存修改' : '保存合同') }}
+        </button>
+        <button
+          v-if="showStartRevision"
+          class="button secondary"
+          :disabled="startingRevision"
+          @click="startRevision"
+        >
+          {{ startingRevision ? '处理中...' : '发起修订' }}
         </button>
         <button
           v-if="showContractSubmitApproval"
@@ -38,17 +46,58 @@
 
     <div v-if="error" style="color: #c92a2a; margin-bottom: 10px;">{{ error }}</div>
     <div v-if="success" style="color: #2b8a3e; margin-bottom: 10px;">{{ success }}</div>
+    <div v-if="pendingApprovalReadonly" style="color: #888; margin-bottom: 10px;">
+      合同审批进行中，主信息只读。
+    </div>
+    <div v-else-if="approvedReadonly" style="color: #888; margin-bottom: 10px;">
+      合同已审批通过：仅可修订签署日期和上传附件；修改其它字段请先点击“发起修订”并重新提交审批。
+    </div>
+
+    <div class="card">
+      <div class="section-title">审批进度</div>
+      <div v-if="approvalProgressLoading" style="color: #888;">审批进度加载中...</div>
+      <div v-else-if="approvalProgressError" style="color: #c92a2a;">{{ approvalProgressError }}</div>
+      <div v-else-if="!approvalProgress?.has_instance" style="color: #888;">暂无审批记录</div>
+      <div v-else class="form-grid">
+        <div>
+          <label>流程状态</label>
+          <input :value="approvalInstanceStatusLabel(approvalProgress.instance_status)" disabled />
+        </div>
+        <div>
+          <label>当前步骤</label>
+          <input :value="approvalProgress.current_step_name || '-'" disabled />
+        </div>
+        <div>
+          <label>当前审批人</label>
+          <input :value="approvalProgressApprovers || '-'" disabled />
+        </div>
+        <div>
+          <label>最近动作</label>
+          <input :value="approvalProgressLatestActionLabel" disabled />
+        </div>
+      </div>
+      <div v-if="approvalProgress?.has_instance" style="margin-top: 10px;">
+        <button class="button secondary" @click="openApprovalDetail">查看审批详情</button>
+      </div>
+    </div>
 
     <div class="card">
       <div class="section-title">合同信息</div>
       <div class="form-grid">
         <div>
           <label>合同编号</label>
-          <input v-model="form.contract_no" placeholder="合同编号" />
+          <input
+            v-model="form.contract_no"
+            :disabled="contractNoReadonly"
+            :placeholder="isEdit ? '合同编号' : '保存后自动生成（YYYYMMDD001）'"
+          />
+          <div v-if="!isEdit" style="font-size: 12px; color: #888; margin-top: 4px;">
+            保存后自动生成（YYYYMMDD001）
+          </div>
         </div>
         <div>
           <label>合同名称</label>
-          <input v-model="form.name" placeholder="合同名称" />
+          <input v-model="form.name" :disabled="contractMainReadonly" placeholder="合同名称" />
         </div>
         <div>
           <label>关联甲方</label>
@@ -56,12 +105,13 @@
             <div class="account-search">
               <input
                 v-model="accountQuery"
+                :disabled="contractMainReadonly"
                 placeholder="输入甲方全称/简称，自动搜索"
                 @focus="handleAccountFocus"
                 @blur="handleAccountBlur"
               />
-              <button class="button secondary" type="button" @click="triggerSearch">搜索</button>
-              <button v-if="form.account" class="button secondary" type="button" @click="clearAccount">
+              <button class="button secondary" type="button" :disabled="contractMainReadonly" @click="triggerSearch">搜索</button>
+              <button v-if="form.account" class="button secondary" type="button" :disabled="contractMainReadonly" @click="clearAccount">
                 清除
               </button>
             </div>
@@ -77,12 +127,13 @@
                 :key="acc.id"
                 class="account-option"
                 type="button"
+                :disabled="contractMainReadonly"
                 @click="selectAccount(acc)"
               >
                 {{ acc.full_name }}{{ acc.short_name ? `（${acc.short_name}）` : '' }}
               </button>
             </div>
-            <div v-if="showQuickCreate" class="account-create">
+            <div v-if="showQuickCreate && !contractMainReadonly" class="account-create">
               <div class="section-title">新增甲方</div>
               <div class="form-grid">
                 <div>
@@ -107,7 +158,7 @@
         </div>
         <div>
           <label>乙方公司</label>
-          <select v-model.number="form.vendor_company">
+          <select v-model.number="form.vendor_company" :disabled="contractMainReadonly">
             <option :value="null">请选择乙方公司</option>
             <option v-for="opt in lookupOptions.vendor_company" :key="opt.id" :value="opt.id">
               {{ opt.name }}
@@ -116,7 +167,7 @@
         </div>
         <div>
           <label>关联商机</label>
-          <select v-model.number="form.opportunity">
+          <select v-model.number="form.opportunity" :disabled="contractMainReadonly">
             <option :value="null">未关联</option>
             <option v-for="opp in opportunities" :key="opp.id" :value="opp.id">
               {{ opp.opportunity_name }}
@@ -125,7 +176,7 @@
         </div>
         <div>
           <label>所属区域</label>
-          <select v-model.number="form.region">
+          <select v-model.number="form.region" :disabled="contractMainReadonly">
             <option :value="null">默认所属区域</option>
             <option v-for="region in regions" :key="region.id" :value="region.id">
               {{ region.name || region.code || `ID ${region.id}` }}
@@ -134,7 +185,7 @@
         </div>
         <div>
           <label>负责人</label>
-          <select v-model.number="form.owner">
+          <select v-model.number="form.owner" :disabled="contractMainReadonly">
             <option :value="null">默认负责人</option>
             <option v-for="u in users" :key="u.id" :value="u.id">
               {{ u.username || u.email || `ID ${u.id}` }}
@@ -143,14 +194,14 @@
         </div>
         <div>
           <label>是否为框架合同</label>
-          <select v-model="form.is_framework">
+          <select v-model="form.is_framework" :disabled="contractMainReadonly">
             <option :value="false">否</option>
             <option :value="true">是</option>
           </select>
         </div>
         <div>
           <label>所属框架合同</label>
-          <select v-model.number="form.framework_contract" :disabled="form.is_framework">
+          <select v-model.number="form.framework_contract" :disabled="contractMainReadonly || form.is_framework">
             <option :value="null">不选择</option>
             <option v-for="item in frameworkContracts" :key="item.id" :value="item.id">
               {{ frameworkLabel(item) }}
@@ -165,11 +216,11 @@
       <div class="form-grid">
         <div>
           <label>合同金额</label>
-          <input v-model.number="form.amount" type="number" />
+          <input v-model.number="form.amount" :disabled="contractMainReadonly" type="number" />
         </div>
         <div>
           <label>当前产值</label>
-          <input v-model.number="form.current_output" type="number" />
+          <input v-model.number="form.current_output" :disabled="contractMainReadonly" type="number" />
         </div>
         <div>
           <label>应收款</label>
@@ -177,11 +228,11 @@
         </div>
         <div>
           <label>最终结算金额</label>
-          <input v-model.number="form.final_settlement_amount" type="number" />
+          <input v-model.number="form.final_settlement_amount" :disabled="contractMainReadonly" type="number" />
         </div>
         <div>
           <label>合同状态</label>
-          <select v-model="form.status">
+          <select v-model="form.status" :disabled="contractMainReadonly">
             <option value="draft">草稿</option>
             <option value="signed">已签署</option>
             <option value="active">履行中</option>
@@ -195,27 +246,28 @@
             :value="approvalLabel(form.approval_status)"
             disabled
           />
-          <select v-else v-model="form.approval_status">
+          <select v-else v-model="form.approval_status" :disabled="contractMainReadonly">
             <option value="pending">待审批</option>
             <option value="approved">已通过</option>
             <option value="rejected">已驳回</option>
+            <option value="revising">修订中</option>
           </select>
         </div>
         <div>
           <label>签署日期</label>
-          <input v-model="form.signed_at" type="date" />
+          <input v-model="form.signed_at" :disabled="pendingApprovalReadonly" type="date" />
         </div>
         <div>
           <label>生效日期</label>
-          <input v-model="form.start_date" type="date" />
+          <input v-model="form.start_date" :disabled="contractMainReadonly" type="date" />
         </div>
         <div>
           <label>到期日期</label>
-          <input v-model="form.end_date" type="date" />
+          <input v-model="form.end_date" :disabled="contractMainReadonly" type="date" />
         </div>
         <div style="grid-column: 1 / -1;">
           <label>备注</label>
-          <textarea v-model="form.remark" rows="3"></textarea>
+          <textarea v-model="form.remark" :disabled="contractMainReadonly" rows="3"></textarea>
         </div>
       </div>
     </div>
@@ -614,6 +666,10 @@ const accountCreateError = ref('')
 const contractFlowLoaded = ref(false)
 const contractHasGlobalFlow = ref(false)
 const contractActiveRegionIds = ref([])
+const approvalProgressLoading = ref(false)
+const approvalProgressError = ref('')
+const approvalProgress = ref(null)
+const startingRevision = ref(false)
 
 const form = ref({
   contract_no: '',
@@ -641,6 +697,7 @@ const form = ref({
 })
 
 const isEdit = computed(() => Boolean(route.params.id))
+const isAdmin = computed(() => Boolean(auth.user?.is_staff || auth.user?.is_superuser))
 const contractApprovalEnabled = computed(() => auth.user?.approval_switches?.contract !== false)
 const contractFlowEnabled = computed(() => {
   if (!contractFlowLoaded.value) return true
@@ -650,9 +707,43 @@ const contractFlowEnabled = computed(() => {
   }
   return contractHasGlobalFlow.value
 })
-const showContractSubmitApproval = computed(() => (
-  isEdit.value && contractApprovalEnabled.value && contractFlowEnabled.value
+const pendingApprovalReadonly = computed(() => (
+  isEdit.value
+  && contractApprovalEnabled.value
+  && approvalProgress.value?.has_instance
+  && approvalProgress.value?.instance_status === 'pending'
 ))
+const approvedReadonly = computed(() => (
+  isEdit.value
+  && contractApprovalEnabled.value
+  && form.value.approval_status === 'approved'
+))
+const contractMainReadonly = computed(() => pendingApprovalReadonly.value || approvedReadonly.value)
+const contractNoReadonly = computed(() => !isEdit.value || contractMainReadonly.value || !isAdmin.value)
+const showContractSubmitApproval = computed(() => (
+  isEdit.value
+  && contractApprovalEnabled.value
+  && contractFlowEnabled.value
+  && !pendingApprovalReadonly.value
+  && form.value.approval_status !== 'approved'
+))
+const showStartRevision = computed(() => (
+  isEdit.value
+  && contractApprovalEnabled.value
+  && approvedReadonly.value
+))
+const approvalProgressApprovers = computed(() => {
+  const items = Array.isArray(approvalProgress.value?.pending_approvers) ? approvalProgress.value.pending_approvers : []
+  if (!items.length) return ''
+  return items.map((item) => item.username).filter(Boolean).join('、')
+})
+const approvalProgressLatestActionLabel = computed(() => {
+  const action = approvalProgress.value?.latest_action
+  if (!action) return '-'
+  const actor = action.actor_name || '-'
+  const when = formatDate(action.created_at)
+  return `${approvalActionLabel(action.action)} · ${actor} · ${when}`
+})
 const headerTitle = computed(() => {
   if (!isEdit.value) return '新建合同'
   return form.value.name || form.value.contract_no || '合同详情'
@@ -672,7 +763,33 @@ const approvalLabel = (value) => {
   const map = {
     pending: '待审批',
     approved: '已通过',
-    rejected: '已驳回'
+    rejected: '已驳回',
+    revising: '修订中'
+  }
+  return map[value] || value || '-'
+}
+
+const approvalInstanceStatusLabel = (value) => {
+  const map = {
+    pending: '审批中',
+    approved: '已通过',
+    rejected: '已驳回',
+    withdrawn: '已撤回'
+  }
+  return map[value] || '-'
+}
+
+const approvalActionLabel = (value) => {
+  const map = {
+    submitted: '发起审批',
+    task_activated: '任务激活',
+    approved: '审批通过',
+    rejected: '审批驳回',
+    withdrawn: '审批撤回',
+    completed: '流程完成',
+    todo_create: '待办创建',
+    todo_complete: '待办关闭',
+    todo_failed: '待办失败'
   }
   return map[value] || value || '-'
 }
@@ -685,6 +802,7 @@ const statusBadgeClass = (value) => {
 
 const approvalBadgeClass = (value) => {
   if (value === 'approved') return 'green'
+  if (value === 'revising') return 'orange'
   if (value === 'rejected') return 'gray'
   return 'orange'
 }
@@ -760,11 +878,24 @@ const fetchContractApprovalFlowConfig = async () => {
       ? res.data.results
       : (Array.isArray(res.data) ? res.data : [])
     const activeContractFlows = flows.filter((item) => item?.target_type === 'contract' && item?.is_active)
-    contractHasGlobalFlow.value = activeContractFlows.some((item) => item?.region == null)
-    contractActiveRegionIds.value = activeContractFlows
-      .map((item) => item?.region)
-      .filter((value) => value != null)
-      .map((value) => Number(value))
+    const regionIdSet = new Set()
+    contractHasGlobalFlow.value = false
+    activeContractFlows.forEach((item) => {
+      const scopeMode = item?.scope_mode || 'all_regions'
+      const regionIds = Array.isArray(item?.region_ids) ? item.region_ids : []
+      const legacySingleRegion = scopeMode === 'all_regions' && item?.region != null && regionIds.length === 0
+      if (scopeMode === 'selected_regions' || legacySingleRegion) {
+        regionIds.forEach((rid) => {
+          if (rid != null) regionIdSet.add(Number(rid))
+        })
+        if ((item?.region != null) && regionIds.length === 0) {
+          regionIdSet.add(Number(item.region))
+        }
+      } else {
+        contractHasGlobalFlow.value = true
+      }
+    })
+    contractActiveRegionIds.value = Array.from(regionIdSet)
     contractFlowLoaded.value = true
   } catch (err) {
     // Keep default visible on fetch failure to avoid blocking valid submissions.
@@ -1068,6 +1199,34 @@ const loadContract = async () => {
   }
 }
 
+const fetchApprovalProgress = async () => {
+  if (!isEdit.value) {
+    approvalProgress.value = null
+    approvalProgressError.value = ''
+    return
+  }
+  approvalProgressLoading.value = true
+  approvalProgressError.value = ''
+  try {
+    const res = await api.get(`/contracts/${route.params.id}/approval_progress/`)
+    approvalProgress.value = res.data || null
+  } catch (err) {
+    approvalProgress.value = null
+    approvalProgressError.value = '审批进度加载失败'
+  } finally {
+    approvalProgressLoading.value = false
+  }
+}
+
+const openApprovalDetail = () => {
+  if (!approvalProgress.value?.has_instance || !approvalProgress.value?.instance_id) return
+  router.push({
+    name: 'approval-instance',
+    params: { id: String(approvalProgress.value.instance_id) },
+    query: { from: `contract:${route.params.id}` }
+  })
+}
+
 const fetchAttachments = async () => {
   if (!isEdit.value) return
   const res = await api.get('/contract-attachments/', {
@@ -1347,30 +1506,68 @@ const deleteInvoice = async (id) => {
   }
 }
 
-const normalizePayload = () => ({
-  contract_no: form.value.contract_no || '',
-  name: form.value.name || '',
-  account: form.value.account ? Number(form.value.account) : null,
-  vendor_company: form.value.vendor_company ? Number(form.value.vendor_company) : null,
-  opportunity: form.value.opportunity ? Number(form.value.opportunity) : null,
-  ...(form.value.region ? { region: Number(form.value.region) } : {}),
-  ...(form.value.owner ? { owner: Number(form.value.owner) } : {}),
-  is_framework: Boolean(form.value.is_framework),
-  framework_contract: form.value.is_framework
-    ? null
-    : (form.value.framework_contract ? Number(form.value.framework_contract) : null),
-  remark: form.value.remark || '',
-  amount: form.value.amount === '' ? null : form.value.amount,
-  current_output: form.value.current_output === '' ? null : form.value.current_output,
-  final_settlement_amount: form.value.final_settlement_amount === '' ? null : form.value.final_settlement_amount,
-  status: form.value.status,
-  ...(contractApprovalEnabled.value ? {} : { approval_status: form.value.approval_status }),
-  signed_at: form.value.signed_at || null,
-  start_date: form.value.start_date || null,
-  end_date: form.value.end_date || null
-})
+const normalizePayload = () => {
+  if (isEdit.value && approvedReadonly.value) {
+    return {
+      signed_at: form.value.signed_at || null
+    }
+  }
+  const payload = {
+    name: form.value.name || '',
+    account: form.value.account ? Number(form.value.account) : null,
+    vendor_company: form.value.vendor_company ? Number(form.value.vendor_company) : null,
+    opportunity: form.value.opportunity ? Number(form.value.opportunity) : null,
+    ...(form.value.region ? { region: Number(form.value.region) } : {}),
+    ...(form.value.owner ? { owner: Number(form.value.owner) } : {}),
+    is_framework: Boolean(form.value.is_framework),
+    framework_contract: form.value.is_framework
+      ? null
+      : (form.value.framework_contract ? Number(form.value.framework_contract) : null),
+    remark: form.value.remark || '',
+    amount: form.value.amount === '' ? null : form.value.amount,
+    current_output: form.value.current_output === '' ? null : form.value.current_output,
+    final_settlement_amount: form.value.final_settlement_amount === '' ? null : form.value.final_settlement_amount,
+    status: form.value.status,
+    ...(contractApprovalEnabled.value ? {} : { approval_status: form.value.approval_status }),
+    signed_at: form.value.signed_at || null,
+    start_date: form.value.start_date || null,
+    end_date: form.value.end_date || null
+  }
+  if (isEdit.value && isAdmin.value) {
+    payload.contract_no = form.value.contract_no || ''
+  }
+  return payload
+}
 
 const save = async () => {
+  if (pendingApprovalReadonly.value) {
+    error.value = '合同审批中，主信息只读'
+    return
+  }
+  if (isEdit.value && approvedReadonly.value) {
+    error.value = ''
+    success.value = ''
+    saving.value = true
+    try {
+      await api.patch(`/contracts/${route.params.id}/`, { signed_at: form.value.signed_at || null })
+      success.value = '签署日期已更新'
+      await loadContract()
+      await fetchApprovalProgress()
+    } catch (err) {
+      const detail = err.response?.data
+      if (detail && typeof detail === 'object') {
+        const messages = Object.entries(detail)
+          .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join('；') : value}`)
+          .join(' | ')
+        error.value = messages || '保存失败，请检查后端服务'
+      } else {
+        error.value = '保存失败，请检查后端服务'
+      }
+    } finally {
+      saving.value = false
+    }
+    return
+  }
   if (!form.value.account) {
     error.value = '请选择关联甲方'
     return
@@ -1425,6 +1622,28 @@ const save = async () => {
   }
 }
 
+const startRevision = async () => {
+  if (!showStartRevision.value) return
+  error.value = ''
+  success.value = ''
+  startingRevision.value = true
+  try {
+    await api.post(`/contracts/${route.params.id}/start_revision/`)
+    success.value = '已进入修订状态，请修改后重新提交审批'
+    await loadContract()
+    await fetchApprovalProgress()
+  } catch (err) {
+    const detail = err.response?.data
+    if (detail && typeof detail === 'object') {
+      error.value = detail.detail || '发起修订失败'
+    } else {
+      error.value = '发起修订失败'
+    }
+  } finally {
+    startingRevision.value = false
+  }
+}
+
 const submitApproval = async () => {
   if (!showContractSubmitApproval.value) return
   error.value = ''
@@ -1434,6 +1653,7 @@ const submitApproval = async () => {
     await api.post(`/contracts/${route.params.id}/submit_approval/`)
     success.value = '已提交审批'
     await loadContract()
+    await fetchApprovalProgress()
   } catch (err) {
     const detail = err.response?.data
     if (detail && typeof detail === 'object') {
@@ -1463,6 +1683,7 @@ onMounted(async () => {
   await fetchUsers()
   await fetchFrameworkContracts()
   await loadContract()
+  await fetchApprovalProgress()
   await fetchAttachments()
   await fetchPayments()
   await fetchInvoices()

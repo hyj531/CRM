@@ -1,5 +1,6 @@
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from core import models
@@ -37,7 +38,13 @@ def _resolve_step_assignees(step, region):
     if step.approver_user:
         return [step.approver_user]
     if step.approver_role:
-        return list(models.User.objects.filter(role=step.approver_role, region=region, is_active=True))
+        return list(
+            models.User.objects.filter(
+                Q(role=step.approver_role) | Q(roles=step.approver_role),
+                region=region,
+                is_active=True,
+            ).distinct()
+        )
     return []
 
 

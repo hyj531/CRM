@@ -51,8 +51,8 @@ def _ensure_user(user, region):
             updates['phone'] = mobile
         if union_id and existing.dingtalk_union_id != union_id:
             updates['dingtalk_union_id'] = union_id
-        target_region_id = region.id if region else None
-        if existing.region_id != target_region_id:
+        # Keep existing region assignment to avoid overwriting manual adjustments.
+        if existing.region_id is None and region is not None:
             updates['region'] = region
         if updates:
             for key, value in updates.items():

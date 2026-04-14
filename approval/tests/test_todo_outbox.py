@@ -39,6 +39,14 @@ class ApprovalTodoOutboxTests(APITestCase):
             dingtalk_user_id='dt_user_b',
             dingtalk_union_id='dt_union_b',
         )
+        self.approver_c = core_models.User.objects.create_user(
+            username=f'approver_c_{core_models.User.objects.count() + 1}',
+            password='pass1234',
+            region=self.region,
+            role=self.approver_role,
+            dingtalk_user_id='dt_user_c',
+            dingtalk_union_id='dt_union_c',
+        )
         self.account = core_models.Account.objects.create(
             full_name=f'测试客户{core_models.Account.objects.count() + 1}',
             short_name='测试客户',
@@ -158,15 +166,16 @@ class ApprovalTodoOutboxTests(APITestCase):
             instance = engine.start_approval(self.contract, self.owner)
 
         pending_tasks = list(instance.tasks.filter(status=approval_models.ApprovalTask.STATUS_PENDING).order_by('id'))
-        self.assertEqual(len(pending_tasks), 2)
+        self.assertGreaterEqual(len(pending_tasks), 2)
 
         with self.captureOnCommitCallbacks(execute=True):
             engine.approve_task(pending_tasks[0], self.approver_a, approved=False, comment='驳回')
 
         instance.refresh_from_db()
-        pending_tasks[1].refresh_from_db()
         self.assertEqual(instance.status, approval_models.ApprovalInstance.STATUS_REJECTED)
-        self.assertEqual(pending_tasks[1].status, approval_models.ApprovalTask.STATUS_CANCELED)
+        for other_task in pending_tasks[1:]:
+            other_task.refresh_from_db()
+            self.assertEqual(other_task.status, approval_models.ApprovalTask.STATUS_CANCELED)
         self.assertGreaterEqual(
             approval_models.ApprovalTodoOutbox.objects.filter(
                 task__instance=instance,
@@ -240,6 +249,135 @@ class ApprovalTodoOutboxTests(APITestCase):
                 action=approval_models.ApprovalTodoOutbox.ACTION_CREATE,
             ).exists()
         )
+
+    def test_add_sign_task_suspends_parent_and_resume_after_feedback(self):
+        self._create_flow(parallel=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract, self.owner)
+        parent_task = instance.tasks.filter(status=approval_models.ApprovalTask.STATUS_PENDING).first()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            add_task = engine.add_sign_task(parent_task, self.approver_a, self.approver_b, comment='请补充意见')
+
+        parent_task.refresh_from_db()
+        add_task.refresh_from_db()
+        self.assertEqual(parent_task.status, approval_models.ApprovalTask.STATUS_BLOCKED)
+        self.assertEqual(add_task.status, approval_models.ApprovalTask.STATUS_PENDING)
+        self.assertEqual(add_task.parent_task_id, parent_task.id)
+        self.assertTrue(
+            approval_models.ApprovalTodoOutbox.objects.filter(
+                task=parent_task,
+                action=approval_models.ApprovalTodoOutbox.ACTION_COMPLETE,
+            ).exists()
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            engine.approve_task(add_task, self.approver_b, approved=True, comment='已给出意见')
+
+        parent_task.refresh_from_db()
+        add_task.refresh_from_db()
+        instance.refresh_from_db()
+        self.assertEqual(add_task.status, approval_models.ApprovalTask.STATUS_APPROVED)
+        self.assertEqual(parent_task.status, approval_models.ApprovalTask.STATUS_PENDING)
+        self.assertEqual(instance.status, approval_models.ApprovalInstance.STATUS_PENDING)
+
+    def test_add_sign_task_cannot_reject_instance(self):
+        self._create_flow(parallel=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract, self.owner)
+        parent_task = instance.tasks.filter(status=approval_models.ApprovalTask.STATUS_PENDING).first()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            add_task = engine.add_sign_task(parent_task, self.approver_a, self.approver_b, comment='请补充意见')
+
+        with self.assertRaisesMessage(ValueError, '加签任务仅支持提交意见，不可驳回流程'):
+            with self.captureOnCommitCallbacks(execute=True):
+                engine.approve_task(add_task, self.approver_b, approved=False, comment='驳回')
+
+    def test_parent_task_cannot_decide_while_add_sign_pending(self):
+        self._create_flow(parallel=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract, self.owner)
+        parent_task = instance.tasks.filter(status=approval_models.ApprovalTask.STATUS_PENDING).first()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            engine.add_sign_task(parent_task, self.approver_a, self.approver_b, comment='加签')
+
+        with self.assertRaisesMessage(ValueError, 'Task is not pending'):
+            with self.captureOnCommitCallbacks(execute=True):
+                engine.approve_task(parent_task, self.approver_a, approved=True, comment='尝试直接同意')
+
+    def test_add_sign_task_disallows_parallel_add_sign(self):
+        self._create_flow(parallel=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract, self.owner)
+        parent_task = instance.tasks.filter(status=approval_models.ApprovalTask.STATUS_PENDING).first()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            engine.add_sign_task(parent_task, self.approver_a, self.approver_b, comment='第一次加签')
+
+        with self.assertRaisesMessage(ValueError, '当前任务已有进行中的加签'):
+            with self.captureOnCommitCallbacks(execute=True):
+                engine.add_sign_task(parent_task, self.approver_a, self.approver_c, comment='第二次加签')
+
+    def test_transfer_add_sign_task_keeps_parent_relation(self):
+        self._create_flow(parallel=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract, self.owner)
+        parent_task = instance.tasks.filter(status=approval_models.ApprovalTask.STATUS_PENDING).first()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            add_task = engine.add_sign_task(parent_task, self.approver_a, self.approver_b, comment='加签')
+        with self.captureOnCommitCallbacks(execute=True):
+            transferred_task = engine.transfer_task(add_task, self.approver_b, self.approver_c, comment='转办加签')
+
+        add_task.refresh_from_db()
+        transferred_task.refresh_from_db()
+        self.assertEqual(add_task.status, approval_models.ApprovalTask.STATUS_CANCELED)
+        self.assertEqual(transferred_task.status, approval_models.ApprovalTask.STATUS_PENDING)
+        self.assertEqual(transferred_task.parent_task_id, parent_task.id)
+
+    def test_auto_skip_same_assignee_on_later_steps(self):
+        flow = approval_models.ApprovalFlow.objects.create(
+            name='同人后续自动跳过',
+            target_type=approval_models.ApprovalFlow.TARGET_CONTRACT,
+            region=self.region,
+            is_active=True,
+        )
+        approval_models.ApprovalStep.objects.create(
+            flow=flow,
+            order=1,
+            name='一级审批',
+            approver_user=self.approver_a,
+        )
+        approval_models.ApprovalStep.objects.create(
+            flow=flow,
+            order=2,
+            name='二级审批（同人）',
+            approver_user=self.approver_a,
+        )
+        approval_models.ApprovalStep.objects.create(
+            flow=flow,
+            order=3,
+            name='三级审批',
+            approver_user=self.approver_b,
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract, self.owner)
+        step1_task = instance.tasks.get(step__order=1, assignee=self.approver_a)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            engine.approve_task(step1_task, self.approver_a, approved=True, comment='同意')
+
+        instance.refresh_from_db()
+        step2_task = instance.tasks.get(step__order=2, assignee=self.approver_a)
+        step3_task = instance.tasks.get(step__order=3, assignee=self.approver_b)
+
+        self.assertEqual(step2_task.status, approval_models.ApprovalTask.STATUS_APPROVED)
+        self.assertIn('系统自动跳过', step2_task.comment)
+        self.assertEqual(step3_task.status, approval_models.ApprovalTask.STATUS_PENDING)
+        self.assertEqual(instance.current_step, 3)
 
     @patch('approval.services.todo.send_todo_task_result')
     def test_outbox_failure_retries_then_dead_letter(self, mocked_send):

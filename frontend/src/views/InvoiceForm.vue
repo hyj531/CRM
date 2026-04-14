@@ -25,6 +25,34 @@
     <div v-if="success" style="color: #2b8a3e; margin-bottom: 10px;">{{ success }}</div>
 
     <div class="card">
+      <div class="section-title">审批进度</div>
+      <div v-if="approvalProgressLoading" style="color: #888;">审批进度加载中...</div>
+      <div v-else-if="approvalProgressError" style="color: #c92a2a;">{{ approvalProgressError }}</div>
+      <div v-else-if="!approvalProgress?.has_instance" style="color: #888;">暂无审批记录</div>
+      <div v-else class="form-grid">
+        <div>
+          <label>流程状态</label>
+          <input :value="approvalInstanceStatusLabel(approvalProgress.instance_status)" disabled />
+        </div>
+        <div>
+          <label>当前步骤</label>
+          <input :value="approvalProgress.current_step_name || '-'" disabled />
+        </div>
+        <div>
+          <label>当前审批人</label>
+          <input :value="approvalProgressApprovers || '-'" disabled />
+        </div>
+        <div>
+          <label>最近动作</label>
+          <input :value="approvalProgressLatestActionLabel" disabled />
+        </div>
+      </div>
+      <div v-if="approvalProgress?.has_instance" style="margin-top: 10px;">
+        <button class="button secondary" @click="openApprovalDetail">查看审批详情</button>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="section-title">开票信息</div>
       <div class="form-grid">
         <div>
@@ -144,6 +172,9 @@ const submittingApproval = ref(false)
 const invoiceFlowLoaded = ref(false)
 const invoiceHasGlobalFlow = ref(false)
 const invoiceActiveRegionIds = ref([])
+const approvalProgressLoading = ref(false)
+const approvalProgressError = ref('')
+const approvalProgress = ref(null)
 
 const form = ref({
   invoice_no: '',
@@ -179,6 +210,18 @@ const invoiceFlowEnabled = computed(() => {
 const showInvoiceSubmitApproval = computed(() => (
   !isNew.value && invoiceApprovalEnabled.value && invoiceFlowEnabled.value
 ))
+const approvalProgressApprovers = computed(() => {
+  const items = Array.isArray(approvalProgress.value?.pending_approvers) ? approvalProgress.value.pending_approvers : []
+  if (!items.length) return ''
+  return items.map((item) => item.username).filter(Boolean).join('、')
+})
+const approvalProgressLatestActionLabel = computed(() => {
+  const action = approvalProgress.value?.latest_action
+  if (!action) return '-'
+  const actor = action.actor_name || '-'
+  const when = formatDateTime(action.created_at)
+  return `${approvalActionLabel(action.action)} · ${actor} · ${when}`
+})
 
 const approvalLabel = (value) => {
   const map = {
@@ -187,6 +230,36 @@ const approvalLabel = (value) => {
     rejected: '已驳回'
   }
   return map[value] || value || '-'
+}
+
+const approvalInstanceStatusLabel = (value) => {
+  const map = {
+    pending: '审批中',
+    approved: '已通过',
+    rejected: '已驳回',
+    withdrawn: '已撤回'
+  }
+  return map[value] || '-'
+}
+
+const approvalActionLabel = (value) => {
+  const map = {
+    submitted: '发起审批',
+    task_activated: '任务激活',
+    approved: '审批通过',
+    rejected: '审批驳回',
+    withdrawn: '审批撤回',
+    completed: '流程完成',
+    todo_create: '待办创建',
+    todo_complete: '待办关闭',
+    todo_failed: '待办失败'
+  }
+  return map[value] || value || '-'
+}
+
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  return String(value).replace('T', ' ').slice(0, 19)
 }
 
 const contractLabel = (contract) => {
@@ -272,11 +345,24 @@ const fetchInvoiceApprovalFlowConfig = async () => {
       ? res.data.results
       : (Array.isArray(res.data) ? res.data : [])
     const activeInvoiceFlows = flows.filter((item) => item?.target_type === 'invoice' && item?.is_active)
-    invoiceHasGlobalFlow.value = activeInvoiceFlows.some((item) => item?.region == null)
-    invoiceActiveRegionIds.value = activeInvoiceFlows
-      .map((item) => item?.region)
-      .filter((value) => value != null)
-      .map((value) => Number(value))
+    const regionIdSet = new Set()
+    invoiceHasGlobalFlow.value = false
+    activeInvoiceFlows.forEach((item) => {
+      const scopeMode = item?.scope_mode || 'all_regions'
+      const regionIds = Array.isArray(item?.region_ids) ? item.region_ids : []
+      const legacySingleRegion = scopeMode === 'all_regions' && item?.region != null && regionIds.length === 0
+      if (scopeMode === 'selected_regions' || legacySingleRegion) {
+        regionIds.forEach((rid) => {
+          if (rid != null) regionIdSet.add(Number(rid))
+        })
+        if ((item?.region != null) && regionIds.length === 0) {
+          regionIdSet.add(Number(item.region))
+        }
+      } else {
+        invoiceHasGlobalFlow.value = true
+      }
+    })
+    invoiceActiveRegionIds.value = Array.from(regionIdSet)
     invoiceFlowLoaded.value = true
   } catch (err) {
     // Keep default visible on fetch failure to avoid blocking valid submissions.
@@ -306,6 +392,34 @@ const fetchInvoice = async () => {
     form.value.account = Number(ct.account)
   }
   applyDefaults()
+}
+
+const fetchApprovalProgress = async () => {
+  if (!invoiceId.value) {
+    approvalProgress.value = null
+    approvalProgressError.value = ''
+    return
+  }
+  approvalProgressLoading.value = true
+  approvalProgressError.value = ''
+  try {
+    const res = await api.get(`/invoices/${invoiceId.value}/approval_progress/`)
+    approvalProgress.value = res.data || null
+  } catch (err) {
+    approvalProgress.value = null
+    approvalProgressError.value = '审批进度加载失败'
+  } finally {
+    approvalProgressLoading.value = false
+  }
+}
+
+const openApprovalDetail = () => {
+  if (!approvalProgress.value?.has_instance || !approvalProgress.value?.instance_id) return
+  router.push({
+    name: 'approval-instance',
+    params: { id: String(approvalProgress.value.instance_id) },
+    query: { from: `invoice:${invoiceId.value}` }
+  })
 }
 
 const saveInvoice = async () => {
@@ -374,6 +488,7 @@ const submitApproval = async () => {
     await api.post(`/invoices/${invoiceId.value}/submit_approval/`)
     success.value = '已提交审批'
     await fetchInvoice()
+    await fetchApprovalProgress()
   } catch (err) {
     const detail = err.response?.data
     if (detail && typeof detail === 'object') {
@@ -399,6 +514,7 @@ onMounted(async () => {
   await fetchInvoiceApprovalFlowConfig()
   if (!isNew.value) {
     await fetchInvoice()
+    await fetchApprovalProgress()
   } else {
     applyDefaults()
   }

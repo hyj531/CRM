@@ -39,3 +39,21 @@ class InvoiceApprovalAdapter(BaseApprovalAdapter):
             obj.approval_status = status_map.get(status, 'pending')
             obj.save(update_fields=['approval_status'])
         return obj
+
+    def get_attachments(self, obj, request=None):
+        contract = getattr(obj, 'contract', None)
+        if not contract:
+            return []
+        attachments = []
+        for item in contract.attachments.all().order_by('-created_at'):
+            file_url = item.file.url if item.file else ''
+            if request and file_url:
+                file_url = request.build_absolute_uri(file_url)
+            attachments.append({
+                'id': item.id,
+                'original_name': item.original_name or item.file.name.split('/')[-1] if item.file else '',
+                'file_url': file_url,
+                'owner_name': getattr(item.owner, 'username', '') if item.owner else '',
+                'created_at': item.created_at,
+            })
+        return attachments

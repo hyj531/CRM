@@ -1,4 +1,5 @@
 from core import models
+from core.services import role_access
 
 
 def get_region_scope_ids(user):
@@ -7,8 +8,7 @@ def get_region_scope_ids(user):
     if user.is_superuser:
         return None
 
-    role = getattr(user, 'role', None)
-    scope = role.data_scope if role else models.Role.SCOPE_REGION_CHILDREN
+    scope = role_access.get_effective_scope(user)
 
     if scope == models.Role.SCOPE_ALL:
         return None
@@ -31,8 +31,7 @@ def apply_scope(queryset, user, region_field='region', owner_field='owner'):
     if user.is_superuser:
         return queryset
 
-    role = getattr(user, 'role', None)
-    scope = role.data_scope if role else models.Role.SCOPE_REGION_CHILDREN
+    scope = role_access.get_effective_scope(user)
 
     if scope == models.Role.SCOPE_ALL:
         return queryset

@@ -18,6 +18,7 @@ import ActivityList from '../views/ActivityList.vue'
 import TaskList from '../views/TaskList.vue'
 import ApprovalTask from '../views/ApprovalTask.vue'
 import ApprovalTaskList from '../views/ApprovalTaskList.vue'
+import ApprovalFlowConfig from '../views/ApprovalFlowConfig.vue'
 import CommonDocList from '../views/CommonDocList.vue'
 
 const routes = [
@@ -43,7 +44,9 @@ const routes = [
   { path: '/common-docs', name: 'common-docs', component: CommonDocList },
   { path: '/activities', name: 'activities', component: ActivityList },
   { path: '/tasks', name: 'tasks', component: TaskList },
+  { path: '/approvals/config', name: 'approval-flow-config', component: ApprovalFlowConfig },
   { path: '/approvals/tasks', name: 'approval-task-list', component: ApprovalTaskList },
+  { path: '/approvals/instances/:id', name: 'approval-instance', component: ApprovalTask, props: true },
   { path: '/approvals/tasks/:id', name: 'approval-task', component: ApprovalTask, props: true }
 ]
 

@@ -1,7 +1,9 @@
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 
 from core.models import Region, Role
@@ -27,10 +29,29 @@ class ApprovalFlow(TimestampedModel):
         (TARGET_INVOICE, '开票'),
     ]
 
+    SCOPE_ALL_REGIONS = 'all_regions'
+    SCOPE_SELECTED_REGIONS = 'selected_regions'
+    SCOPE_MODE_CHOICES = [
+        (SCOPE_ALL_REGIONS, '全部区域'),
+        (SCOPE_SELECTED_REGIONS, '指定区域'),
+    ]
+
     name = models.CharField('流程名称', max_length=200)
     target_type = models.CharField('审批对象', max_length=20, choices=TARGET_CHOICES)
     region = models.ForeignKey(
         Region, null=True, blank=True, on_delete=models.PROTECT, related_name='approval_flows', verbose_name='区域'
+    )
+    scope_mode = models.CharField(
+        '适用范围',
+        max_length=20,
+        choices=SCOPE_MODE_CHOICES,
+        default=SCOPE_ALL_REGIONS,
+    )
+    regions = models.ManyToManyField(
+        Region,
+        blank=True,
+        related_name='scoped_approval_flows',
+        verbose_name='适用区域',
     )
     is_active = models.BooleanField('是否启用', default=True)
 
@@ -44,9 +65,35 @@ class ApprovalFlow(TimestampedModel):
 
 
 class ApprovalStep(models.Model):
+    ASSIGNEE_TYPE_USER = 'user'
+    ASSIGNEE_TYPE_ROLE = 'role'
+    ASSIGNEE_TYPE_CHOICES = [
+        (ASSIGNEE_TYPE_USER, '指定用户'),
+        (ASSIGNEE_TYPE_ROLE, '指定角色'),
+    ]
+
+    ASSIGNEE_SCOPE_REGION = 'region'
+    ASSIGNEE_SCOPE_GLOBAL = 'global'
+    ASSIGNEE_SCOPE_CHOICES = [
+        (ASSIGNEE_SCOPE_REGION, '按发起区域匹配'),
+        (ASSIGNEE_SCOPE_GLOBAL, '全局匹配'),
+    ]
+
     flow = models.ForeignKey(ApprovalFlow, on_delete=models.CASCADE, related_name='steps', verbose_name='流程')
     order = models.PositiveIntegerField('步骤顺序')
     name = models.CharField('步骤名称', max_length=200)
+    assignee_type = models.CharField(
+        '审批人类型',
+        max_length=20,
+        choices=ASSIGNEE_TYPE_CHOICES,
+        default=ASSIGNEE_TYPE_ROLE,
+    )
+    assignee_scope = models.CharField(
+        '审批人作用域',
+        max_length=20,
+        choices=ASSIGNEE_SCOPE_CHOICES,
+        default=ASSIGNEE_SCOPE_REGION,
+    )
     approver_role = models.ForeignKey(Role, null=True, blank=True, on_delete=models.PROTECT, verbose_name='审批角色')
     approver_user = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, verbose_name='审批人'
@@ -57,9 +104,34 @@ class ApprovalStep(models.Model):
         verbose_name = '审批步骤'
         verbose_name_plural = '审批步骤'
         db_table = 'core_approvalstep'
+        constraints = [
+            models.UniqueConstraint(fields=['flow', 'order'], name='uniq_approval_step_flow_order'),
+            models.CheckConstraint(
+                check=~(Q(approver_user__isnull=False) & Q(approver_role__isnull=False)),
+                name='chk_approval_step_no_both_user_and_role',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.flow.name} - {self.name}"
+
+    def clean(self):
+        super().clean()
+        if self.assignee_type == self.ASSIGNEE_TYPE_USER:
+            if not self.approver_user_id:
+                raise ValidationError({'approver_user': '指定用户节点必须配置审批人。'})
+            if self.approver_role_id:
+                raise ValidationError({'approver_role': '指定用户节点不能配置审批角色。'})
+        elif self.assignee_type == self.ASSIGNEE_TYPE_ROLE:
+            if not self.approver_role_id:
+                raise ValidationError({'approver_role': '指定角色节点必须配置审批角色。'})
+            if self.approver_user_id:
+                raise ValidationError({'approver_user': '指定角色节点不能配置审批人。'})
+        else:
+            raise ValidationError({'assignee_type': '无效的审批人类型。'})
+
+        if self.assignee_type == self.ASSIGNEE_TYPE_USER and self.assignee_scope != self.ASSIGNEE_SCOPE_REGION:
+            raise ValidationError({'assignee_scope': '指定用户节点的作用域必须为区域。'})
 
 
 class ApprovalInstance(TimestampedModel):
@@ -144,6 +216,14 @@ class ApprovalTask(TimestampedModel):
     step = models.ForeignKey(ApprovalStep, on_delete=models.PROTECT, verbose_name='审批步骤')
     assignee = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='approval_tasks', verbose_name='审批人'
+    )
+    parent_task = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='add_sign_children',
+        verbose_name='来源任务',
     )
     status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default=STATUS_BLOCKED)
     decided_at = models.DateTimeField('处理时间', null=True, blank=True)

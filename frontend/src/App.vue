@@ -15,6 +15,7 @@
         <router-link to="/contracts"><span class="nav-icon">▣</span>合同管理</router-link>
         <router-link to="/invoices"><span class="nav-icon">◉</span>开票管理</router-link>
         <router-link to="/payments"><span class="nav-icon">◆</span>回款管理</router-link>
+        <router-link v-if="canManageApprovalConfig" to="/approvals/config"><span class="nav-icon">◍</span>审批配置</router-link>
         <router-link v-if="canAccessCommonDocs" to="/common-docs"><span class="nav-icon">◧</span>常用文档</router-link>
       </nav>
       <div class="sidebar-footer">
@@ -75,6 +76,9 @@ const canAccessCommonDocs = computed(() => {
   const mod = auth.user?.permissions?.common_doc
   return Boolean(mod && (mod.create || mod.update || mod.delete || mod.approve))
 })
+const canManageApprovalConfig = computed(() => (
+  auth.user?.can_manage_approval_config || auth.user?.is_staff || auth.user?.is_superuser
+))
 const showPasswordForm = ref(false)
 const passwordSaving = ref(false)
 const passwordError = ref('')

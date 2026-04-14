@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from approval import models as approval_models
+from approval.services import engine as approval_engine
 from core import models
 from core.services import approval_switches
 
@@ -109,6 +110,21 @@ class ApprovalSwitchesAPITests(APITestCase):
             setting.invoice_approval_enabled = bool(invoice)
         setting.save()
         approval_switches.clear_approval_switches_cache()
+
+    def _approve_latest_pending_contract_task(self, contract):
+        task = (
+            approval_models.ApprovalTask.objects.filter(
+                instance__target_type=approval_models.ApprovalFlow.TARGET_CONTRACT,
+                instance__object_id=contract.id,
+                status=approval_models.ApprovalTask.STATUS_PENDING,
+                assignee=self.approver,
+            )
+            .order_by('-id')
+            .first()
+        )
+        self.assertIsNotNone(task)
+        with self.captureOnCommitCallbacks(execute=True):
+            approval_engine.approve_task(task, self.approver, approved=True, comment='同意')
 
     def test_auth_me_returns_approval_switches(self):
         response = self.client.get(reverse('current_user'))
@@ -265,3 +281,109 @@ class ApprovalSwitchesAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.invoice.refresh_from_db()
         self.assertEqual(self.invoice.approval_status, 'approved')
+
+    def _approve_contract(self, contract):
+        with self.captureOnCommitCallbacks(execute=True):
+            approval_engine.start_approval(contract, self.submitter)
+        task = approval_models.ApprovalTask.objects.filter(
+            instance__target_type=approval_models.ApprovalFlow.TARGET_CONTRACT,
+            instance__object_id=contract.id,
+            status=approval_models.ApprovalTask.STATUS_PENDING,
+            assignee=self.approver,
+        ).order_by('-id').first()
+        self.assertIsNotNone(task)
+        with self.captureOnCommitCallbacks(execute=True):
+            approval_engine.approve_task(task, self.approver, approved=True, comment='同意')
+
+    def test_contract_main_fields_readonly_while_pending_instance(self):
+        response = self.client.post(reverse('contract-submit-approval', args=[self.contract.id]), {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        patch_resp = self.client.patch(
+            reverse('contract-detail', args=[self.contract.id]),
+            {'name': '审批中修改', 'signed_at': '2026-04-01'},
+            format='json',
+        )
+        self.assertEqual(patch_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('只读', patch_resp.data.get('detail', ''))
+
+    def test_contract_approved_allows_signed_at_only(self):
+        self._approve_contract(self.contract)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.approval_status, 'approved')
+
+        signed_resp = self.client.patch(
+            reverse('contract-detail', args=[self.contract.id]),
+            {'signed_at': '2026-04-08'},
+            format='json',
+        )
+        self.assertEqual(signed_resp.status_code, status.HTTP_200_OK)
+        self.contract.refresh_from_db()
+        self.assertEqual(str(self.contract.signed_at), '2026-04-08')
+
+        blocked_resp = self.client.patch(
+            reverse('contract-detail', args=[self.contract.id]),
+            {'name': '审批通过后修改名称'},
+            format='json',
+        )
+        self.assertEqual(blocked_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('仅允许修改签署日期', blocked_resp.data.get('detail', ''))
+
+    def test_contract_start_revision_unlocks_main_fields(self):
+        self._approve_contract(self.contract)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.approval_status, 'approved')
+
+        revision_resp = self.client.post(reverse('contract-start-revision', args=[self.contract.id]), {}, format='json')
+        self.assertEqual(revision_resp.status_code, status.HTTP_200_OK)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.approval_status, 'revising')
+
+        patch_resp = self.client.patch(
+            reverse('contract-detail', args=[self.contract.id]),
+            {'name': '修订后名称'},
+            format='json',
+        )
+        self.assertEqual(patch_resp.status_code, status.HTTP_200_OK)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.name, '修订后名称')
+
+    def test_revision_approval_completion_sets_approved_and_locks_main_fields(self):
+        submit_resp = self.client.post(reverse('contract-submit-approval', args=[self.contract.id]), {}, format='json')
+        self.assertEqual(submit_resp.status_code, status.HTTP_201_CREATED)
+        self._approve_latest_pending_contract_task(self.contract)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.approval_status, 'approved')
+
+        revision_resp = self.client.post(reverse('contract-start-revision', args=[self.contract.id]), {}, format='json')
+        self.assertEqual(revision_resp.status_code, status.HTTP_200_OK)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.approval_status, 'revising')
+
+        edit_resp = self.client.patch(
+            reverse('contract-detail', args=[self.contract.id]),
+            {'name': '修订中的合同名'},
+            format='json',
+        )
+        self.assertEqual(edit_resp.status_code, status.HTTP_200_OK)
+
+        resubmit_resp = self.client.post(reverse('contract-submit-approval', args=[self.contract.id]), {}, format='json')
+        self.assertEqual(resubmit_resp.status_code, status.HTTP_201_CREATED)
+        self._approve_latest_pending_contract_task(self.contract)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.approval_status, 'approved')
+
+        blocked_resp = self.client.patch(
+            reverse('contract-detail', args=[self.contract.id]),
+            {'name': '审批结束后非法修改'},
+            format='json',
+        )
+        self.assertEqual(blocked_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('仅允许修改签署日期', blocked_resp.data.get('detail', ''))
+
+        signed_resp = self.client.patch(
+            reverse('contract-detail', args=[self.contract.id]),
+            {'signed_at': '2026-04-14'},
+            format='json',
+        )
+        self.assertEqual(signed_resp.status_code, status.HTTP_200_OK)

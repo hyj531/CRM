@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from rest_framework.reverse import reverse
 from django.db.models import Sum
@@ -22,24 +23,82 @@ class RoleSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    roles = serializers.PrimaryKeyRelatedField(
+        queryset=models.Role.objects.all(),
+        many=True,
+        required=False,
+    )
+
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
-            'is_active', 'is_staff', 'region', 'role',
+            'is_active', 'is_staff', 'region', 'role', 'roles',
             'dingtalk_user_id', 'dingtalk_union_id', 'phone', 'password'
         ]
         extra_kwargs = {'password': {'write_only': True}}
 
+    def _pop_role_payload(self, validated_data):
+        roles_value = validated_data.pop('roles', serializers.empty)
+        role_value = validated_data.pop('role', serializers.empty)
+        return roles_value, role_value
+
+    def _apply_role_payload(self, user, roles_value, role_value):
+        if roles_value is not serializers.empty:
+            user.roles.set(roles_value)
+            primary_role_id = roles_value[0].id if roles_value else None
+            if user.role_id != primary_role_id:
+                user.role_id = primary_role_id
+                user.save(update_fields=['role'])
+            return
+
+        if role_value is serializers.empty:
+            return
+
+        if role_value is None:
+            user.roles.clear()
+            if user.role_id is not None:
+                user.role_id = None
+                user.save(update_fields=['role'])
+            return
+
+        if user.role_id != role_value.id:
+            user.role_id = role_value.id
+            user.save(update_fields=['role'])
+        user.roles.set([role_value])
+
     def create(self, validated_data):
         password = validated_data.pop('password', None)
+        roles_value, role_value = self._pop_role_payload(validated_data)
+        if roles_value is not serializers.empty:
+            validated_data['role'] = roles_value[0] if roles_value else None
+        elif role_value is not serializers.empty:
+            validated_data['role'] = role_value
         user = User(**validated_data)
         if password:
             user.set_password(password)
         else:
             user.set_unusable_password()
         user.save()
+        self._apply_role_payload(user, roles_value, role_value)
         return user
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', serializers.empty)
+        roles_value, role_value = self._pop_role_payload(validated_data)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if password is not serializers.empty:
+            if password:
+                instance.set_password(password)
+            else:
+                instance.set_unusable_password()
+
+        instance.save()
+        self._apply_role_payload(instance, roles_value, role_value)
+        return instance
 
 
 class LeadSerializer(serializers.ModelSerializer):
@@ -264,6 +323,39 @@ class ContractSerializer(serializers.ModelSerializer):
     def _approval_status_managed_by_system(self):
         return approval_switches.is_contract_approval_enabled()
 
+    def _latest_approval_instance_status(self, instance):
+        from approval import models as approval_models
+
+        content_type = ContentType.objects.get_for_model(instance.__class__)
+        pending_exists = approval_models.ApprovalInstance.objects.filter(
+            content_type=content_type,
+            object_id=instance.id,
+            status=approval_models.ApprovalInstance.STATUS_PENDING,
+        ).exists()
+        if pending_exists:
+            return approval_models.ApprovalInstance.STATUS_PENDING
+
+        latest_instance = (
+            approval_models.ApprovalInstance.objects
+            .filter(content_type=content_type, object_id=instance.id)
+            .order_by('-created_at', '-id')
+            .first()
+        )
+        return latest_instance.status if latest_instance else None
+
+    def _is_value_changed(self, instance, field_name, incoming_value):
+        current_value = getattr(instance, field_name, None)
+        current_cmp = getattr(current_value, 'pk', current_value)
+        incoming_cmp = getattr(incoming_value, 'pk', incoming_value)
+        return current_cmp != incoming_cmp
+
+    def _collect_changed_fields(self, instance, validated_data):
+        changed = []
+        for field_name, incoming_value in validated_data.items():
+            if self._is_value_changed(instance, field_name, incoming_value):
+                changed.append(field_name)
+        return changed
+
     def get_fields(self):
         fields = super().get_fields()
         if self._approval_status_managed_by_system() and 'approval_status' in fields:
@@ -288,8 +380,33 @@ class ContractSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
+        if 'contract_no' in validated_data:
+            request = self.context.get('request')
+            user = getattr(request, 'user', None)
+            is_admin = bool(user and user.is_authenticated and (user.is_staff or user.is_superuser))
+            if not is_admin:
+                raise serializers.ValidationError({'contract_no': '仅管理员可修改合同编号'})
         if self._approval_status_managed_by_system():
             validated_data.pop('approval_status', None)
+            approval_instance_status = self._latest_approval_instance_status(instance)
+            changed_fields = [
+                name
+                for name in self._collect_changed_fields(instance, validated_data)
+                if name not in {'updated_by', 'updated_at', 'created_by', 'created_at'}
+            ]
+
+            if approval_instance_status == 'pending' and changed_fields:
+                raise serializers.ValidationError({'detail': '合同审批中，主信息为只读。'})
+
+            if (
+                instance.approval_status == 'approved'
+                and approval_instance_status == 'approved'
+            ):
+                disallowed_fields = [name for name in changed_fields if name != 'signed_at']
+                if disallowed_fields:
+                    raise serializers.ValidationError({
+                        'detail': '合同已审批通过，仅允许修改签署日期。请先发起修订后再修改其它字段并重新提交审批。'
+                    })
         return super().update(instance, validated_data)
 
     def get_receivable_amount(self, obj):
@@ -398,35 +515,32 @@ class CommonDocDirectorySerializer(serializers.ModelSerializer):
         permission_map = self.context.get('directory_permission_map', {})
         return permission_map.get(obj.id)
 
-    def get_can_view(self, obj):
-        perm = self._permission(obj)
+    def _flag(self, perm, key):
         if perm == 'admin':
             return True
-        return bool(perm and perm.can_view)
+        if isinstance(perm, dict):
+            return bool(perm.get(key))
+        return bool(perm and getattr(perm, key, False))
+
+    def get_can_view(self, obj):
+        perm = self._permission(obj)
+        return self._flag(perm, 'can_view')
 
     def get_can_download(self, obj):
         perm = self._permission(obj)
-        if perm == 'admin':
-            return True
-        return bool(perm and perm.can_download)
+        return self._flag(perm, 'can_download')
 
     def get_can_upload(self, obj):
         perm = self._permission(obj)
-        if perm == 'admin':
-            return True
-        return bool(perm and perm.can_upload)
+        return self._flag(perm, 'can_upload')
 
     def get_can_edit(self, obj):
         perm = self._permission(obj)
-        if perm == 'admin':
-            return True
-        return bool(perm and perm.can_edit)
+        return self._flag(perm, 'can_edit')
 
     def get_can_delete(self, obj):
         perm = self._permission(obj)
-        if perm == 'admin':
-            return True
-        return bool(perm and perm.can_delete)
+        return self._flag(perm, 'can_delete')
 
 
 class CommonDocDirectoryPermissionSerializer(serializers.ModelSerializer):
