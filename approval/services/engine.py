@@ -193,6 +193,23 @@ def _auto_skip_future_same_assignee_tasks(instance, source_task, actor):
         )
 
 
+def _log_auto_skip_no_assignee_step(instance, actor, step):
+    _log_action(
+        instance=instance,
+        action=models.ApprovalActionLog.ACTION_APPROVED,
+        actor=actor,
+        from_status=models.ApprovalTask.STATUS_BLOCKED,
+        to_status=models.ApprovalTask.STATUS_APPROVED,
+        comment='系统自动跳过（未命中审批人）',
+        extra={
+            'op': 'auto_skip_no_assignee',
+            'step_id': step.id,
+            'step_order': step.order,
+            'step_name': step.name or '',
+        },
+    )
+
+
 def _advance_instance_after_current_step(instance, actor):
     current_order = instance.current_step
     while True:
@@ -288,7 +305,7 @@ def start_approval(target_obj, user):
     flow = get_flow_for_region(target_type, region)
     if not flow:
         raise ValueError(_missing_flow_error(target_type))
-    steps = list(flow.steps.all())
+    steps = list(flow.steps.select_related('approver_role', 'approver_user').order_by('order', 'id'))
     if not steps:
         raise ValueError(_missing_flow_steps_error(target_type))
 
@@ -321,12 +338,20 @@ def start_approval(target_obj, user):
     _sync_target_status(target_obj, models.ApprovalInstance.STATUS_PENDING)
 
     tasks = []
-    for index, step in enumerate(steps, start=1):
+    first_pending_order = None
+    for step in steps:
         assignees = _resolve_step_assignees(step, region)
         if not assignees:
-            raise ValueError(f'第{index}节点未匹配审批人。')
+            _log_auto_skip_no_assignee_step(instance=instance, actor=user, step=step)
+            continue
+        if first_pending_order is None:
+            first_pending_order = step.order
         for assignee in assignees:
-            task_status = models.ApprovalTask.STATUS_PENDING if index == 1 else models.ApprovalTask.STATUS_BLOCKED
+            task_status = (
+                models.ApprovalTask.STATUS_PENDING
+                if step.order == first_pending_order
+                else models.ApprovalTask.STATUS_BLOCKED
+            )
             tasks.append(
                 models.ApprovalTask(
                     instance=instance,
@@ -335,19 +360,40 @@ def start_approval(target_obj, user):
                     status=task_status,
                 )
             )
-    if tasks:
-        models.ApprovalTask.objects.bulk_create(tasks)
-        first_step_tasks = list(instance.tasks.filter(status=models.ApprovalTask.STATUS_PENDING))
-        for pending_task in first_step_tasks:
-            _schedule_task_create_todo(pending_task, instance)
-            _log_action(
-                instance=instance,
-                action=models.ApprovalActionLog.ACTION_TASK_ACTIVATED,
-                actor=user,
-                task=pending_task,
-                from_status=models.ApprovalTask.STATUS_BLOCKED,
-                to_status=models.ApprovalTask.STATUS_PENDING,
-            )
+
+    if not tasks:
+        old_instance_status = instance.status
+        instance.current_step = steps[-1].order
+        instance.status = models.ApprovalInstance.STATUS_APPROVED
+        instance.save(update_fields=['current_step', 'status', 'updated_at'])
+        _log_action(
+            instance=instance,
+            action=models.ApprovalActionLog.ACTION_COMPLETED,
+            actor=user,
+            from_status=old_instance_status,
+            to_status=models.ApprovalInstance.STATUS_APPROVED,
+            comment='流程无可用审批人节点，系统自动通过',
+            extra={'op': 'auto_skip_no_assignee_all'},
+        )
+        _sync_target_status(target_obj, models.ApprovalInstance.STATUS_APPROVED)
+        return instance
+
+    if instance.current_step != first_pending_order:
+        instance.current_step = first_pending_order
+        instance.save(update_fields=['current_step', 'updated_at'])
+
+    models.ApprovalTask.objects.bulk_create(tasks)
+    first_step_tasks = list(instance.tasks.filter(status=models.ApprovalTask.STATUS_PENDING))
+    for pending_task in first_step_tasks:
+        _schedule_task_create_todo(pending_task, instance)
+        _log_action(
+            instance=instance,
+            action=models.ApprovalActionLog.ACTION_TASK_ACTIVATED,
+            actor=user,
+            task=pending_task,
+            from_status=models.ApprovalTask.STATUS_BLOCKED,
+            to_status=models.ApprovalTask.STATUS_PENDING,
+        )
 
     return instance
 

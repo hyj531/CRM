@@ -182,17 +182,26 @@ class ApprovalFlowConfigViewSet(viewsets.ModelViewSet):
             if step.assignee_type == models.ApprovalStep.ASSIGNEE_TYPE_USER and not step.approver_user_id:
                 raise ValueError(f'节点“{step.name}”未配置审批人。')
 
+        warnings = []
         for region in preview_regions:
             for step in steps:
                 assignees = self._resolve_preview_users(step, region)
                 if not assignees:
-                    raise ValueError(f'第{step.order}节点在区域“{region.name}”未匹配审批人。')
+                    warnings.append({
+                        'region_id': region.id,
+                        'region_name': region.name,
+                        'step_id': step.id,
+                        'step_order': step.order,
+                        'step_name': step.name or '',
+                        'message': f'第{step.order}节点在区域“{region.name}”未匹配审批人，将自动跳过。',
+                    })
+        return warnings
 
     @action(detail=True, methods=['post'])
     def publish(self, request, pk=None):
         flow = self.get_object()
         try:
-            self._validate_publish_flow(flow)
+            warnings = self._validate_publish_flow(flow)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -202,6 +211,7 @@ class ApprovalFlowConfigViewSet(viewsets.ModelViewSet):
             flow.save(update_fields=['status', 'is_active', 'updated_at'])
 
         data = self.get_serializer(flow).data
+        data['warnings'] = warnings
         return Response(data)
 
     @action(detail=True, methods=['get'], url_path='preview-assignees')
@@ -234,6 +244,7 @@ class ApprovalFlowConfigViewSet(viewsets.ModelViewSet):
                         for user in assignees
                     ],
                     'matched_count': len(assignees),
+                    'will_auto_skip': len(assignees) == 0,
                 })
             items.append({
                 'region_id': region_item.id,

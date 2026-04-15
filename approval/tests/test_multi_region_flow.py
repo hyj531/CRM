@@ -275,7 +275,7 @@ class MultiRegionApprovalFlowTests(APITestCase):
         self.assertEqual(step2_pending[0].assignee_id, self.manager_east.id)
         self.assertIn(partner_east_2.id, [first.assignee_id, second.assignee_id])
 
-    def test_missing_assignee_blocks_submission(self):
+    def test_all_steps_missing_assignee_auto_approves(self):
         self._create_flow(
             name='空审批人流程',
             scope_mode=approval_models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
@@ -290,9 +290,102 @@ class MultiRegionApprovalFlowTests(APITestCase):
             ],
         )
 
-        with self.assertRaisesRegex(ValueError, '第1节点未匹配审批人'):
-            with self.captureOnCommitCallbacks(execute=True):
-                engine.start_approval(self.contract_east, self.submitter_east)
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract_east, self.submitter_east)
+        instance.refresh_from_db()
+        self.contract_east.refresh_from_db()
+
+        self.assertEqual(instance.status, approval_models.ApprovalInstance.STATUS_APPROVED)
+        self.assertEqual(instance.tasks.count(), 0)
+        self.assertEqual(self.contract_east.approval_status, 'approved')
+        self.assertTrue(instance.action_logs.filter(extra__op='auto_skip_no_assignee').exists())
+        self.assertTrue(instance.action_logs.filter(extra__op='auto_skip_no_assignee_all').exists())
+
+    def test_first_step_missing_auto_skips_to_next_pending_step(self):
+        self._create_flow(
+            name='首节点未命中流程',
+            scope_mode=approval_models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
+            regions=[self.region_east],
+            steps=[
+                {
+                    'name': '缺失角色',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_missing,
+                },
+                {
+                    'name': '区域合伙人',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_partner,
+                },
+                {
+                    'name': '区域负责人',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_manager,
+                },
+            ],
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract_east, self.submitter_east)
+        instance.refresh_from_db()
+
+        self.assertEqual(instance.current_step, 2)
+        pending = self._pending_tasks(instance)
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0].assignee_id, self.partner_east.id)
+        self.assertTrue(instance.action_logs.filter(extra__op='auto_skip_no_assignee', extra__step_order=1).exists())
+
+        with self.captureOnCommitCallbacks(execute=True):
+            engine.approve_task(pending[0], self.partner_east, approved=True, comment='同意')
+        instance.refresh_from_db()
+        self.assertEqual(instance.current_step, 3)
+        step3_pending = self._pending_tasks(instance)
+        self.assertEqual(len(step3_pending), 1)
+        self.assertEqual(step3_pending[0].assignee_id, self.manager_east.id)
+
+    def test_middle_step_missing_is_auto_skipped_on_advance(self):
+        self._create_flow(
+            name='中间节点未命中流程',
+            scope_mode=approval_models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
+            regions=[self.region_east],
+            steps=[
+                {
+                    'name': '区域合伙人',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_partner,
+                },
+                {
+                    'name': '缺失角色',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_missing,
+                },
+                {
+                    'name': '区域负责人',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_manager,
+                },
+            ],
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract_east, self.submitter_east)
+        first_pending = self._pending_tasks(instance)[0]
+        self.assertEqual(first_pending.assignee_id, self.partner_east.id)
+        self.assertTrue(instance.action_logs.filter(extra__op='auto_skip_no_assignee', extra__step_order=2).exists())
+
+        with self.captureOnCommitCallbacks(execute=True):
+            engine.approve_task(first_pending, self.partner_east, approved=True, comment='同意')
+        instance.refresh_from_db()
+        self.assertEqual(instance.current_step, 3)
+        step3_pending = self._pending_tasks(instance)
+        self.assertEqual(len(step3_pending), 1)
+        self.assertEqual(step3_pending[0].assignee_id, self.manager_east.id)
 
     def test_selected_scope_priority_over_all_regions(self):
         self._create_flow(
@@ -410,7 +503,7 @@ class MultiRegionApprovalFlowTests(APITestCase):
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0].assignee_id, self.partner_east.id)
 
-    def test_publish_validates_region_assignees(self):
+    def test_publish_returns_warnings_when_region_assignee_missing(self):
         flow = self._create_flow(
             name='待发布流程',
             scope_mode=approval_models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
@@ -427,8 +520,55 @@ class MultiRegionApprovalFlowTests(APITestCase):
         )
         self.client.force_authenticate(self.admin)
         response = self.client.post(f'/api/approval-flow-configs/{flow.id}/publish/', {}, format='json')
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('未匹配审批人', response.data.get('detail', ''))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        warnings = response.data.get('warnings') or []
+        self.assertTrue(warnings)
+        self.assertTrue(any(
+            item.get('region_id') == self.region_north.id and item.get('step_order') == 1
+            for item in warnings
+        ))
+        flow.refresh_from_db()
+        self.assertTrue(flow.is_active)
+        self.assertEqual(flow.status, approval_models.ApprovalFlow.STATUS_PUBLISHED)
+
+    def test_preview_assignees_marks_will_auto_skip(self):
+        flow = self._create_flow(
+            name='预览流程',
+            scope_mode=approval_models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
+            regions=[self.region_east, self.region_north],
+            steps=[
+                {
+                    'name': '区域负责人',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_manager,
+                },
+            ],
+            is_active=False,
+        )
+        self.client.force_authenticate(self.admin)
+
+        north_resp = self.client.get(
+            f'/api/approval-flow-configs/{flow.id}/preview-assignees/',
+            {'region_id': str(self.region_north.id)},
+            format='json',
+        )
+        self.assertEqual(north_resp.status_code, status.HTTP_200_OK)
+        north_steps = north_resp.data.get('items', [])[0].get('steps', [])
+        self.assertEqual(len(north_steps), 1)
+        self.assertEqual(north_steps[0].get('matched_count'), 0)
+        self.assertTrue(north_steps[0].get('will_auto_skip'))
+
+        east_resp = self.client.get(
+            f'/api/approval-flow-configs/{flow.id}/preview-assignees/',
+            {'region_id': str(self.region_east.id)},
+            format='json',
+        )
+        self.assertEqual(east_resp.status_code, status.HTTP_200_OK)
+        east_steps = east_resp.data.get('items', [])[0].get('steps', [])
+        self.assertEqual(len(east_steps), 1)
+        self.assertEqual(east_steps[0].get('matched_count'), 1)
+        self.assertFalse(east_steps[0].get('will_auto_skip'))
 
     def test_publish_success_sets_flow_active(self):
         flow = self._create_flow(

@@ -9,6 +9,17 @@
 
     <div v-if="error" class="approval-config-alert error">{{ error }}</div>
     <div v-if="success" class="approval-config-alert success">{{ success }}</div>
+    <div v-if="publishWarnings.length" class="approval-config-alert warning">
+      <div>发布成功，但存在 {{ publishWarnings.length }} 个节点在运行时将自动跳过：</div>
+      <ul class="warning-list">
+        <li v-for="(item, idx) in publishWarningsPreview" :key="`${item.region_id}-${item.step_id}-${idx}`">
+          区域【{{ item.region_name }}】第{{ item.step_order }}节点【{{ item.step_name || '-' }}】
+        </li>
+      </ul>
+      <div v-if="publishWarnings.length > publishWarningsPreview.length" class="warning-more">
+        其余 {{ publishWarnings.length - publishWarningsPreview.length }} 个节点请在发布后尽快补齐审批人配置。
+      </div>
+    </div>
 
     <div v-if="!canManage" class="card">
       当前账号无审批配置权限，请联系管理员开通。
@@ -174,7 +185,9 @@
                     <span v-if="row.matched_count">
                       {{ row.matched.map((x) => x.username).join('，') }}
                     </span>
-                    <span v-else class="warn-text">未命中</span>
+                    <span v-else class="warn-text">
+                      {{ row.will_auto_skip ? '未命中（将自动跳过）' : '未命中' }}
+                    </span>
                   </td>
                 </tr>
               </tbody>
@@ -202,12 +215,14 @@ const users = ref([])
 const selectedFlowId = ref(null)
 const previewRegionId = ref('')
 const previewItems = ref([])
+const publishWarnings = ref([])
 
 const error = ref('')
 const success = ref('')
 const saving = ref(false)
 const publishing = ref(false)
 const previewing = ref(false)
+const publishWarningsPreview = computed(() => publishWarnings.value.slice(0, 5))
 
 let localKeySeed = 1
 const nextLocalKey = () => `step-${Date.now()}-${localKeySeed++}`
@@ -284,6 +299,7 @@ const normalizeArray = (resp) => {
 const resetMessages = () => {
   error.value = ''
   success.value = ''
+  publishWarnings.value = []
 }
 
 const hydrateFlowToForm = (flow) => {
@@ -435,7 +451,8 @@ const publishFlow = async () => {
   resetMessages()
   publishing.value = true
   try {
-    await api.post(`/approval-flow-configs/${selectedFlowId.value}/publish/`)
+    const resp = await api.post(`/approval-flow-configs/${selectedFlowId.value}/publish/`)
+    publishWarnings.value = Array.isArray(resp.data?.warnings) ? resp.data.warnings : []
     success.value = '审批流程已发布'
     await loadFlows()
   } catch (err) {
@@ -520,6 +537,26 @@ onMounted(async () => {
   background: #e8f8ef;
   color: #0a7a42;
   border: 1px solid #b6e8cb;
+}
+
+.approval-config-alert.warning {
+  background: #fff8e8;
+  color: #8a4b00;
+  border: 1px solid #f4d39a;
+}
+
+.warning-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.warning-list li {
+  margin: 2px 0;
+}
+
+.warning-more {
+  margin-top: 8px;
+  font-size: 12px;
 }
 
 .approval-config-toolbar {
