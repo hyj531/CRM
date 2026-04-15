@@ -54,6 +54,7 @@
 
     <div class="card">
       <div class="section-title">开票信息</div>
+      <div class="invoice-subsection-title">业务信息</div>
       <div class="form-grid">
         <div>
           <label>关联合同</label>
@@ -104,6 +105,38 @@
           <label>开票编号</label>
           <input v-model="form.invoice_no" />
         </div>
+      </div>
+
+      <div class="invoice-subsection-title">开票抬头信息</div>
+      <div class="form-grid">
+        <div>
+          <label>名称</label>
+          <input v-model="form.billing_name" placeholder="名称" />
+        </div>
+        <div>
+          <label>纳税人识别号 *</label>
+          <input v-model="form.taxpayer_no" placeholder="纳税人识别号" />
+        </div>
+        <div>
+          <label>地址 *</label>
+          <input v-model="form.billing_address" placeholder="地址" />
+        </div>
+        <div>
+          <label>电话 *</label>
+          <input v-model="form.billing_phone" placeholder="电话" />
+        </div>
+        <div>
+          <label>开户银行 *</label>
+          <input v-model="form.billing_bank_name" placeholder="开户银行" />
+        </div>
+        <div>
+          <label>银行账号 *</label>
+          <input v-model="form.billing_bank_account" placeholder="银行账号" />
+        </div>
+      </div>
+
+      <div class="invoice-subsection-title">金额与状态</div>
+      <div class="form-grid">
         <div>
           <label>开票金额</label>
           <input v-model.number="form.amount" type="number" />
@@ -169,17 +202,21 @@ const error = ref('')
 const success = ref('')
 const saving = ref(false)
 const submittingApproval = ref(false)
-const invoiceFlowLoaded = ref(false)
-const invoiceHasGlobalFlow = ref(false)
-const invoiceActiveRegionIds = ref([])
 const approvalProgressLoading = ref(false)
 const approvalProgressError = ref('')
 const approvalProgress = ref(null)
+const billingAutoFillAccountId = ref(null)
 
 const form = ref({
   invoice_no: '',
   contract: null,
   account: null,
+  billing_name: '',
+  taxpayer_no: '',
+  billing_address: '',
+  billing_phone: '',
+  billing_bank_name: '',
+  billing_bank_account: '',
   region: null,
   owner: null,
   amount: null,
@@ -199,16 +236,8 @@ const invoiceId = computed(() => {
 
 const isNew = computed(() => !invoiceId.value)
 const invoiceApprovalEnabled = computed(() => auth.user?.approval_switches?.invoice !== false)
-const invoiceFlowEnabled = computed(() => {
-  if (!invoiceFlowLoaded.value) return true
-  const regionId = form.value.region != null ? Number(form.value.region) : null
-  if (regionId != null && invoiceActiveRegionIds.value.includes(regionId)) {
-    return true
-  }
-  return invoiceHasGlobalFlow.value
-})
 const showInvoiceSubmitApproval = computed(() => (
-  !isNew.value && invoiceApprovalEnabled.value && invoiceFlowEnabled.value
+  !isNew.value && invoiceApprovalEnabled.value
 ))
 const approvalProgressApprovers = computed(() => {
   const items = Array.isArray(approvalProgress.value?.pending_approvers) ? approvalProgress.value.pending_approvers : []
@@ -298,11 +327,62 @@ const applyDefaults = () => {
   }
 }
 
-const selectContract = (ct) => {
+const fillBillingInfoFromAccount = (accountId, force = false) => {
+  if (!accountId) return
+  const acc = accounts.value.find((item) => item.id === Number(accountId))
+  if (!acc) return
+  if (force || !form.value.billing_name) form.value.billing_name = acc.full_name || ''
+  if (force || !form.value.taxpayer_no) form.value.taxpayer_no = acc.credit_code || ''
+  if (force || !form.value.billing_address) form.value.billing_address = acc.address || ''
+  if (force || !form.value.billing_phone) form.value.billing_phone = acc.phone || ''
+}
+
+const fillBillingInfoFromLastInvoice = async (accountId) => {
+  if (!isNew.value || !accountId) return
+  const accountNum = Number(accountId)
+  const force = billingAutoFillAccountId.value !== accountNum
+
+  try {
+    const res = await api.get('/invoices/', {
+      params: {
+        account: accountNum,
+        page: 1,
+        page_size: 1,
+        ordering: '-created_at'
+      }
+    })
+    const list = Array.isArray(res.data?.results) ? res.data.results : (Array.isArray(res.data) ? res.data : [])
+    const latest = list[0]
+    if (latest) {
+      if (force || !form.value.billing_name) form.value.billing_name = latest.billing_name || ''
+      if (force || !form.value.taxpayer_no) form.value.taxpayer_no = latest.taxpayer_no || ''
+      if (force || !form.value.billing_address) form.value.billing_address = latest.billing_address || ''
+      if (force || !form.value.billing_phone) form.value.billing_phone = latest.billing_phone || ''
+      if (force || !form.value.billing_bank_name) form.value.billing_bank_name = latest.billing_bank_name || ''
+      if (force || !form.value.billing_bank_account) form.value.billing_bank_account = latest.billing_bank_account || ''
+      const hasHistory = Boolean(
+        latest.billing_name || latest.taxpayer_no || latest.billing_address
+        || latest.billing_phone || latest.billing_bank_name || latest.billing_bank_account
+      )
+      if (hasHistory) {
+        billingAutoFillAccountId.value = accountNum
+        return
+      }
+    }
+  } catch (err) {
+    // ignore autofill errors to avoid blocking invoice creation
+  }
+
+  fillBillingInfoFromAccount(accountNum, force)
+  billingAutoFillAccountId.value = accountNum
+}
+
+const selectContract = async (ct) => {
   form.value.contract = ct.id
   form.value.account = ct.account != null ? Number(ct.account) : null
   form.value.region = ct.region != null ? Number(ct.region) : form.value.region
   form.value.owner = ct.owner != null ? Number(ct.owner) : form.value.owner
+  await fillBillingInfoFromLastInvoice(form.value.account)
   contractSearch.value = contractLabel(ct)
   showContractDropdown.value = false
 }
@@ -333,42 +413,6 @@ const fetchUsers = async () => {
   users.value = Array.isArray(res.data?.results) ? res.data.results : res.data
 }
 
-const fetchInvoiceApprovalFlowConfig = async () => {
-  invoiceFlowLoaded.value = false
-  invoiceHasGlobalFlow.value = false
-  invoiceActiveRegionIds.value = []
-  try {
-    const res = await api.get('/approval-flows/', {
-      params: { page: 1, page_size: 1000, ordering: '-id' }
-    })
-    const flows = Array.isArray(res.data?.results)
-      ? res.data.results
-      : (Array.isArray(res.data) ? res.data : [])
-    const activeInvoiceFlows = flows.filter((item) => item?.target_type === 'invoice' && item?.is_active)
-    const regionIdSet = new Set()
-    invoiceHasGlobalFlow.value = false
-    activeInvoiceFlows.forEach((item) => {
-      const scopeMode = item?.scope_mode || 'all_regions'
-      const regionIds = Array.isArray(item?.region_ids) ? item.region_ids : []
-      const legacySingleRegion = scopeMode === 'all_regions' && item?.region != null && regionIds.length === 0
-      if (scopeMode === 'selected_regions' || legacySingleRegion) {
-        regionIds.forEach((rid) => {
-          if (rid != null) regionIdSet.add(Number(rid))
-        })
-        if ((item?.region != null) && regionIds.length === 0) {
-          regionIdSet.add(Number(item.region))
-        }
-      } else {
-        invoiceHasGlobalFlow.value = true
-      }
-    })
-    invoiceActiveRegionIds.value = Array.from(regionIdSet)
-    invoiceFlowLoaded.value = true
-  } catch (err) {
-    // Keep default visible on fetch failure to avoid blocking valid submissions.
-  }
-}
-
 const fetchInvoice = async () => {
   if (!invoiceId.value) return
   const res = await api.get(`/invoices/${invoiceId.value}/`)
@@ -377,6 +421,12 @@ const fetchInvoice = async () => {
     invoice_no: data.invoice_no || '',
     contract: data.contract != null ? Number(data.contract) : null,
     account: data.account != null ? Number(data.account) : null,
+    billing_name: data.billing_name || '',
+    taxpayer_no: data.taxpayer_no || '',
+    billing_address: data.billing_address || '',
+    billing_phone: data.billing_phone || '',
+    billing_bank_name: data.billing_bank_name || '',
+    billing_bank_account: data.billing_bank_account || '',
     region: data.region != null ? Number(data.region) : null,
     owner: data.owner != null ? Number(data.owner) : null,
     amount: data.amount != null ? Number(data.amount) : null,
@@ -439,6 +489,26 @@ const saveInvoice = async () => {
     error.value = '请选择负责人'
     return
   }
+  if (!form.value.taxpayer_no?.trim()) {
+    error.value = '纳税人识别号不能为空'
+    return
+  }
+  if (!form.value.billing_address?.trim()) {
+    error.value = '地址不能为空'
+    return
+  }
+  if (!form.value.billing_phone?.trim()) {
+    error.value = '电话不能为空'
+    return
+  }
+  if (!form.value.billing_bank_name?.trim()) {
+    error.value = '开户银行不能为空'
+    return
+  }
+  if (!form.value.billing_bank_account?.trim()) {
+    error.value = '银行账号不能为空'
+    return
+  }
   error.value = ''
   success.value = ''
   saving.value = true
@@ -447,6 +517,12 @@ const saveInvoice = async () => {
       invoice_no: form.value.invoice_no || '',
       contract: Number(form.value.contract),
       account: form.value.account ? Number(form.value.account) : null,
+      billing_name: form.value.billing_name || '',
+      taxpayer_no: form.value.taxpayer_no || '',
+      billing_address: form.value.billing_address || '',
+      billing_phone: form.value.billing_phone || '',
+      billing_bank_name: form.value.billing_bank_name || '',
+      billing_bank_account: form.value.billing_bank_account || '',
       amount: Number(form.value.amount),
       tax_rate: form.value.tax_rate === '' ? null : form.value.tax_rate,
       invoice_type: form.value.invoice_type,
@@ -511,7 +587,6 @@ onMounted(async () => {
   await fetchContracts()
   await fetchRegions()
   await fetchUsers()
-  await fetchInvoiceApprovalFlowConfig()
   if (!isNew.value) {
     await fetchInvoice()
     await fetchApprovalProgress()
@@ -526,6 +601,7 @@ watch(contractSearch, (val) => {
     form.value.account = null
     form.value.region = null
     form.value.owner = null
+    billingAutoFillAccountId.value = null
     applyDefaults()
   }
 })
@@ -562,5 +638,12 @@ watch(contractSearch, (val) => {
 .filter-empty {
   padding: 8px 10px;
   color: #94a3b8;
+}
+
+.invoice-subsection-title {
+  margin: 14px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
 }
 </style>

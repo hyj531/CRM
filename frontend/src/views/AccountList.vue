@@ -59,6 +59,7 @@
         <table class="table account-table">
             <thead>
               <tr>
+                <th>序号</th>
                 <th>客户全称</th>
                 <th>客户简称</th>
                 <th>级别</th>
@@ -72,7 +73,8 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in pagedAccounts" :key="item.id">
+            <tr v-for="(item, index) in pagedAccounts" :key="item.id">
+                <td>{{ rowNo(index) }}</td>
                 <td>
                   <router-link class="link-button" :to="`/accounts/${item.id}`">
                     {{ item.full_name }}
@@ -92,7 +94,7 @@
                 </td>
             </tr>
             <tr v-if="!pagedAccounts.length">
-              <td colspan="10" style="color: #888;">暂无数据</td>
+              <td colspan="11" style="color: #888;">暂无数据</td>
             </tr>
           </tbody>
         </table>
@@ -101,6 +103,11 @@
         <button :disabled="currentPage === 1" @click="changePage(currentPage - 1)">上一页</button>
         <span>第 {{ currentPage }} / {{ pageCount }} 页</span>
         <button :disabled="currentPage === pageCount" @click="changePage(currentPage + 1)">下一页</button>
+        <span>每页</span>
+        <select v-model.number="pageSize" class="compact-select" @change="changePageSize">
+          <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}</option>
+        </select>
+        <span>共 {{ totalCount }} 条</span>
       </div>
     </div>
   </div>
@@ -126,7 +133,8 @@ const lookupOptions = ref({
 const search = ref('')
 const statusFilter = ref('')
 const currentPage = ref(1)
-const pageSize = 10
+const pageSize = ref(10)
+const pageSizeOptions = [10, 20, 50, 100]
 const ordering = ref('-created_at')
 
 const totalCount = computed(() => total.value)
@@ -141,8 +149,9 @@ const statusLabel = (value) => {
   return map[value] || value || '-'
 }
 
-const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const pagedAccounts = computed(() => accounts.value)
+const rowNo = (index) => ((currentPage.value - 1) * pageSize.value) + index + 1
 
 const lookupName = (value, list) => {
   const item = list.find((opt) => String(opt.id) === String(value))
@@ -166,7 +175,7 @@ const fetchLookups = async () => {
 const buildParams = () => {
   const params = {
     page: currentPage.value,
-    page_size: pageSize,
+    page_size: pageSize.value,
     ordering: ordering.value
   }
   if (search.value) params.search = search.value
@@ -219,6 +228,11 @@ const changePage = (page) => {
   fetchData()
 }
 
+const changePageSize = () => {
+  currentPage.value = 1
+  fetchData()
+}
+
 const deleteAccount = async (id) => {
   if (!confirm('确认删除该客户？')) return
   try {
@@ -264,10 +278,4 @@ watch([statusFilter, ordering], () => {
   font-size: 14px;
 }
 
-.account-page .list-card .table th,
-.account-page .list-card .table td {
-  font-size: 14px;
-  padding: 6px 8px;
-  line-height: 1.2;
-}
 </style>

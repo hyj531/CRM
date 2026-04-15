@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -129,11 +132,28 @@ class MultiRegionApprovalFlowTests(APITestCase):
         setting.save()
         approval_switches.clear_approval_switches_cache()
 
-    def _create_flow(self, *, name, scope_mode, regions, steps, is_active=True, target_type='contract'):
+    def _create_flow(
+        self,
+        *,
+        name,
+        scope_mode,
+        regions,
+        steps,
+        is_active=True,
+        target_type='contract',
+        status=approval_models.ApprovalFlow.STATUS_PUBLISHED,
+        priority=100,
+        effective_from=None,
+        effective_to=None,
+    ):
         flow = approval_models.ApprovalFlow.objects.create(
             name=name,
             target_type=target_type,
             scope_mode=scope_mode,
+            status=status,
+            priority=priority,
+            effective_from=effective_from,
+            effective_to=effective_to,
             is_active=is_active,
         )
         if regions:
@@ -314,6 +334,82 @@ class MultiRegionApprovalFlowTests(APITestCase):
         self.assertEqual(len(north_pending), 1)
         self.assertEqual(north_pending[0].assignee_id, self.hq_owner.id)
 
+    def test_higher_priority_flow_wins_when_multiple_selected_scope_flows_match(self):
+        self._create_flow(
+            name='华东低优先级流程',
+            scope_mode=approval_models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
+            regions=[self.region_east],
+            priority=50,
+            steps=[
+                {
+                    'name': '低优先级节点',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_partner,
+                },
+            ],
+        )
+        self._create_flow(
+            name='华东高优先级流程',
+            scope_mode=approval_models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
+            regions=[self.region_east],
+            priority=200,
+            steps=[
+                {
+                    'name': '高优先级节点',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_manager,
+                },
+            ],
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract_east, self.submitter_east)
+        pending = self._pending_tasks(instance)
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0].assignee_id, self.manager_east.id)
+
+    def test_future_effective_flow_is_skipped(self):
+        now = timezone.now()
+        self._create_flow(
+            name='未来生效流程',
+            scope_mode=approval_models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
+            regions=[self.region_east],
+            priority=300,
+            effective_from=now + timedelta(days=1),
+            steps=[
+                {
+                    'name': '未来节点',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_manager,
+                },
+            ],
+        )
+        self._create_flow(
+            name='当前生效流程',
+            scope_mode=approval_models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
+            regions=[self.region_east],
+            priority=100,
+            effective_from=now - timedelta(days=1),
+            effective_to=now + timedelta(days=1),
+            steps=[
+                {
+                    'name': '当前节点',
+                    'assignee_type': approval_models.ApprovalStep.ASSIGNEE_TYPE_ROLE,
+                    'assignee_scope': approval_models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
+                    'approver_role': self.role_partner,
+                },
+            ],
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract_east, self.submitter_east)
+        pending = self._pending_tasks(instance)
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0].assignee_id, self.partner_east.id)
+
     def test_publish_validates_region_assignees(self):
         flow = self._create_flow(
             name='待发布流程',
@@ -348,9 +444,11 @@ class MultiRegionApprovalFlowTests(APITestCase):
                 },
             ],
             is_active=False,
+            status=approval_models.ApprovalFlow.STATUS_DRAFT,
         )
         self.client.force_authenticate(self.admin)
         response = self.client.post(f'/api/approval-flow-configs/{flow.id}/publish/', {}, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         flow.refresh_from_db()
         self.assertTrue(flow.is_active)
+        self.assertEqual(flow.status, approval_models.ApprovalFlow.STATUS_PUBLISHED)

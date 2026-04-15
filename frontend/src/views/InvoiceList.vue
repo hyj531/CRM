@@ -84,6 +84,7 @@
         <table class="table payment-table">
           <thead>
             <tr>
+              <th>序号</th>
               <th>开票编号</th>
               <th>合同</th>
               <th>客户</th>
@@ -99,7 +100,8 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in pagedInvoices" :key="item.id">
+            <tr v-for="(item, index) in pagedInvoices" :key="item.id">
+              <td>{{ rowNo(index) }}</td>
               <td>{{ item.invoice_no || '-' }}</td>
               <td>{{ contractDisplayName(item.contract) }}</td>
               <td>{{ accountName(item.account) }}</td>
@@ -117,7 +119,7 @@
               </td>
             </tr>
             <tr v-if="!pagedInvoices.length">
-              <td colspan="12" style="color: #888;">暂无数据</td>
+              <td colspan="13" style="color: #888;">暂无数据</td>
             </tr>
           </tbody>
         </table>
@@ -126,6 +128,11 @@
         <button :disabled="currentPage === 1" @click="changePage(currentPage - 1)">上一页</button>
         <span>第 {{ currentPage }} / {{ pageCount }} 页</span>
         <button :disabled="currentPage === pageCount" @click="changePage(currentPage + 1)">下一页</button>
+        <span>每页</span>
+        <select v-model.number="pageSize" class="compact-select" @change="changePageSize">
+          <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}</option>
+        </select>
+        <span>共 {{ totalCount }} 条</span>
       </div>
     </div>
   </div>
@@ -163,7 +170,8 @@ const ownerFilter = ref('')
 const issuedAtStart = ref('')
 const issuedAtEnd = ref('')
 const currentPage = ref(1)
-const pageSize = 10
+const pageSize = ref(10)
+const pageSizeOptions = [10, 20, 50, 100]
 const ordering = ref('-issued_at')
 
 const statusLabel = (value) => {
@@ -201,8 +209,9 @@ const totalAmount = computed(() => {
 })
 const approvedCount = computed(() => invoices.value.filter((item) => item.approval_status === 'approved').length)
 
-const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const pagedInvoices = computed(() => invoices.value)
+const rowNo = (index) => ((currentPage.value - 1) * pageSize.value) + index + 1
 
 const contractDisplayName = (contractId) => {
   const ct = contracts.value.find((item) => item.id === contractId)
@@ -219,7 +228,7 @@ const accountName = (accountId) => {
 const buildParams = () => {
   const params = {
     page: currentPage.value,
-    page_size: pageSize,
+    page_size: pageSize.value,
     ordering: ordering.value
   }
   if (search.value) params.search = search.value
@@ -317,6 +326,11 @@ const resetFilters = () => {
 
 const changePage = (page) => {
   currentPage.value = page
+  fetchData()
+}
+
+const changePageSize = () => {
+  currentPage.value = 1
   fetchData()
 }
 

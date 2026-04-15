@@ -21,7 +21,7 @@
         </div>
       </div>
       <div class="page-actions">
-        <button class="button" :disabled="saving || pendingApprovalReadonly" @click="save">
+        <button class="button" :disabled="saving" @click="save">
           {{ saving ? '保存中...' : (isEdit ? '保存修改' : '保存合同') }}
         </button>
         <button
@@ -47,10 +47,10 @@
     <div v-if="error" style="color: #c92a2a; margin-bottom: 10px;">{{ error }}</div>
     <div v-if="success" style="color: #2b8a3e; margin-bottom: 10px;">{{ success }}</div>
     <div v-if="pendingApprovalReadonly" style="color: #888; margin-bottom: 10px;">
-      合同审批进行中，主信息只读。
+      合同审批进行中，除合同状态外主信息只读。
     </div>
     <div v-else-if="approvedReadonly" style="color: #888; margin-bottom: 10px;">
-      合同已审批通过：仅可修订签署日期和上传附件；修改其它字段请先点击“发起修订”并重新提交审批。
+      合同已审批通过：仅可修改签署日期、合同状态和上传附件；修改其它字段请先点击“发起修订”并重新提交审批。
     </div>
 
     <div class="card">
@@ -232,10 +232,9 @@
         </div>
         <div>
           <label>合同状态</label>
-          <select v-model="form.status" :disabled="contractMainReadonly">
+          <select v-model="form.status">
             <option value="draft">草稿</option>
             <option value="signed">已签署</option>
-            <option value="active">履行中</option>
             <option value="closed">已关闭</option>
           </select>
         </div>
@@ -423,72 +422,12 @@
       <div class="section-title">开票明细</div>
       <div v-if="!isEdit" style="color: #888;">保存合同后可录入开票明细</div>
       <div v-else>
-        <div class="form-grid">
-          <div>
-            <label>开票编号</label>
-            <input v-model="invoiceForm.invoice_no" />
-          </div>
-          <div>
-            <label>开票金额</label>
-            <input v-model.number="invoiceForm.amount" type="number" />
-          </div>
-          <div>
-            <label>开票时间</label>
-            <input v-model="invoiceForm.issued_at" type="date" />
-          </div>
-          <div>
-            <label>税率</label>
-            <input v-model.number="invoiceForm.tax_rate" type="number" step="0.01" />
-          </div>
-          <div>
-            <label>开票类型</label>
-            <select v-model="invoiceForm.invoice_type">
-              <option value="normal">普票</option>
-              <option value="special">专票</option>
-            </select>
-          </div>
-          <div>
-            <label>开票状态</label>
-            <select v-model="invoiceForm.status">
-              <option value="draft">草稿</option>
-              <option value="issued">已开票</option>
-              <option value="paid">已回款</option>
-              <option value="void">已作废</option>
-            </select>
-          </div>
-          <div>
-            <label>所属区域</label>
-            <select v-model.number="invoiceForm.region">
-              <option :value="null">请选择所属区域</option>
-              <option v-for="r in regions" :key="r.id" :value="r.id">
-                {{ r.name || r.code || `ID ${r.id}` }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label>负责人</label>
-            <select v-model.number="invoiceForm.owner">
-              <option :value="null">请选择负责人</option>
-              <option v-for="u in users" :key="u.id" :value="u.id">
-                {{ u.username || u.email || `ID ${u.id}` }}
-              </option>
-            </select>
-          </div>
-        </div>
-        <div style="margin-top: 10px;">
-          <button class="button" :disabled="invoiceSaving || !invoiceForm.amount" @click="saveInvoice">
-            {{ invoiceSaving ? '保存中...' : (editingInvoiceId ? '保存修改' : '保存开票') }}
+        <div class="invoice-toolbar">
+          <button class="button" :disabled="invoiceSaving || invoiceSubmitting" @click="openCreateInvoiceModal">
+            新增开票申请
           </button>
-          <button
-            v-if="editingInvoiceId"
-            class="button secondary"
-            style="margin-left: 8px;"
-            @click="cancelEditInvoice"
-          >
-            取消编辑
-          </button>
-          <span v-if="invoiceError" style="margin-left: 10px; color: #c92a2a;">{{ invoiceError }}</span>
-          <span v-if="invoiceSuccess" style="margin-left: 10px; color: #2b8a3e;">{{ invoiceSuccess }}</span>
+          <span v-if="!showInvoiceModal && invoiceError" style="margin-left: 10px; color: #c92a2a;">{{ invoiceError }}</span>
+          <span v-if="!showInvoiceModal && invoiceSuccess" style="margin-left: 10px; color: #2b8a3e;">{{ invoiceSuccess }}</span>
         </div>
         <div style="margin-top: 12px;">
           <table class="table" v-if="invoices.length">
@@ -501,6 +440,12 @@
                 <th>类型</th>
                 <th>状态</th>
                 <th>审批</th>
+                <th>名称</th>
+                <th>纳税人识别号</th>
+                <th>地址</th>
+                <th>电话</th>
+                <th>开户银行</th>
+                <th>银行账号</th>
                 <th>所属区域</th>
                 <th>负责人</th>
                 <th>时间</th>
@@ -516,6 +461,12 @@
                 <td>{{ invoiceTypeLabel(item.invoice_type) }}</td>
                 <td>{{ invoiceStatusLabel(item.status) }}</td>
                 <td>{{ approvalLabel(item.approval_status) }}</td>
+                <td>{{ item.billing_name || '-' }}</td>
+                <td>{{ item.taxpayer_no || '-' }}</td>
+                <td>{{ item.billing_address || '-' }}</td>
+                <td>{{ item.billing_phone || '-' }}</td>
+                <td>{{ item.billing_bank_name || '-' }}</td>
+                <td>{{ item.billing_bank_account || '-' }}</td>
                 <td>{{ item.region_name || item.region || '-' }}</td>
                 <td>{{ item.owner_name || item.owner || '-' }}</td>
                 <td>{{ item.created_at || '-' }}</td>
@@ -528,6 +479,111 @@
             </tbody>
           </table>
           <div v-else style="color: #888;">暂无开票记录</div>
+        </div>
+
+        <div v-if="showInvoiceModal" class="modal-backdrop" @click.self="closeInvoiceModal">
+          <div class="modal-card invoice-modal-card">
+            <div class="modal-header">
+              <div class="modal-title">{{ invoiceModalMode === 'edit' ? '编辑开票申请' : '新增开票申请' }}</div>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label>开票编号</label>
+                <input v-model="invoiceForm.invoice_no" />
+              </div>
+              <div>
+                <label>名称</label>
+                <input v-model="invoiceForm.billing_name" placeholder="名称" />
+              </div>
+              <div>
+                <label>纳税人识别号 *</label>
+                <input v-model="invoiceForm.taxpayer_no" placeholder="纳税人识别号" />
+              </div>
+              <div>
+                <label>地址 *</label>
+                <input v-model="invoiceForm.billing_address" placeholder="地址" />
+              </div>
+              <div>
+                <label>电话 *</label>
+                <input v-model="invoiceForm.billing_phone" placeholder="电话" />
+              </div>
+              <div>
+                <label>开户银行 *</label>
+                <input v-model="invoiceForm.billing_bank_name" placeholder="开户银行" />
+              </div>
+              <div>
+                <label>银行账号 *</label>
+                <input v-model="invoiceForm.billing_bank_account" placeholder="银行账号" />
+              </div>
+              <div>
+                <label>开票金额</label>
+                <input v-model.number="invoiceForm.amount" type="number" />
+              </div>
+              <div>
+                <label>开票时间</label>
+                <input v-model="invoiceForm.issued_at" type="date" />
+              </div>
+              <div>
+                <label>税率</label>
+                <input v-model.number="invoiceForm.tax_rate" type="number" step="0.01" />
+              </div>
+              <div>
+                <label>开票类型</label>
+                <select v-model="invoiceForm.invoice_type">
+                  <option value="normal">普票</option>
+                  <option value="special">专票</option>
+                </select>
+              </div>
+              <div>
+                <label>开票状态</label>
+                <select v-model="invoiceForm.status">
+                  <option value="draft">草稿</option>
+                  <option value="issued">已开票</option>
+                  <option value="paid">已回款</option>
+                  <option value="void">已作废</option>
+                </select>
+              </div>
+              <div>
+                <label>所属区域</label>
+                <select v-model.number="invoiceForm.region">
+                  <option :value="null">请选择所属区域</option>
+                  <option v-for="r in regions" :key="r.id" :value="r.id">
+                    {{ r.name || r.code || `ID ${r.id}` }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label>负责人</label>
+                <select v-model.number="invoiceForm.owner">
+                  <option :value="null">请选择负责人</option>
+                  <option v-for="u in users" :key="u.id" :value="u.id">
+                    {{ u.username || u.email || `ID ${u.id}` }}
+                  </option>
+                </select>
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button class="button" :disabled="invoiceSaving || invoiceSubmitting || !invoiceForm.amount" @click="saveInvoice">
+                {{ invoiceSaving ? '保存中...' : '保存开票' }}
+              </button>
+              <button
+                v-if="invoiceApprovalEnabled"
+                class="button secondary"
+                :disabled="invoiceSaving || invoiceSubmitting || !invoiceForm.amount"
+                @click="submitInvoiceForApproval"
+              >
+                {{ invoiceSubmitting ? '提交中...' : '提交开票申请' }}
+              </button>
+              <button
+                class="button secondary"
+                :disabled="invoiceSaving || invoiceSubmitting"
+                @click="closeInvoiceModal"
+              >
+                取消
+              </button>
+              <span v-if="invoiceError" style="margin-left: 10px; color: #c92a2a;">{{ invoiceError }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -635,6 +691,12 @@ const paymentSuccess = ref('')
 const invoices = ref([])
 const invoiceForm = ref({
   invoice_no: '',
+  billing_name: '',
+  taxpayer_no: '',
+  billing_address: '',
+  billing_phone: '',
+  billing_bank_name: '',
+  billing_bank_account: '',
   amount: null,
   issued_at: '',
   tax_rate: null,
@@ -645,8 +707,11 @@ const invoiceForm = ref({
 })
 const editingInvoiceId = ref(null)
 const invoiceSaving = ref(false)
+const invoiceSubmitting = ref(false)
 const invoiceError = ref('')
 const invoiceSuccess = ref('')
+const showInvoiceModal = ref(false)
+const invoiceModalMode = ref('create')
 const paidTotal = ref(0)
 const lookupOptions = ref({
   vendor_company: []
@@ -663,9 +728,6 @@ const accountCreate = ref({
 })
 const accountCreateSaving = ref(false)
 const accountCreateError = ref('')
-const contractFlowLoaded = ref(false)
-const contractHasGlobalFlow = ref(false)
-const contractActiveRegionIds = ref([])
 const approvalProgressLoading = ref(false)
 const approvalProgressError = ref('')
 const approvalProgress = ref(null)
@@ -699,14 +761,7 @@ const form = ref({
 const isEdit = computed(() => Boolean(route.params.id))
 const isAdmin = computed(() => Boolean(auth.user?.is_staff || auth.user?.is_superuser))
 const contractApprovalEnabled = computed(() => auth.user?.approval_switches?.contract !== false)
-const contractFlowEnabled = computed(() => {
-  if (!contractFlowLoaded.value) return true
-  const regionId = form.value.region != null ? Number(form.value.region) : null
-  if (regionId != null && contractActiveRegionIds.value.includes(regionId)) {
-    return true
-  }
-  return contractHasGlobalFlow.value
-})
+const invoiceApprovalEnabled = computed(() => auth.user?.approval_switches?.invoice !== false)
 const pendingApprovalReadonly = computed(() => (
   isEdit.value
   && contractApprovalEnabled.value
@@ -723,7 +778,6 @@ const contractNoReadonly = computed(() => !isEdit.value || contractMainReadonly.
 const showContractSubmitApproval = computed(() => (
   isEdit.value
   && contractApprovalEnabled.value
-  && contractFlowEnabled.value
   && !pendingApprovalReadonly.value
   && form.value.approval_status !== 'approved'
 ))
@@ -753,7 +807,7 @@ const statusLabel = (value) => {
   const map = {
     draft: '草稿',
     signed: '已签署',
-    active: '履行中',
+    active: '执行中',
     closed: '已关闭'
   }
   return map[value] || value || '-'
@@ -863,42 +917,6 @@ const fetchFrameworkContracts = async () => {
     frameworkContracts.value = Array.isArray(res.data?.results) ? res.data.results : res.data
   } catch (err) {
     frameworkContracts.value = []
-  }
-}
-
-const fetchContractApprovalFlowConfig = async () => {
-  contractFlowLoaded.value = false
-  contractHasGlobalFlow.value = false
-  contractActiveRegionIds.value = []
-  try {
-    const res = await api.get('/approval-flows/', {
-      params: { page: 1, page_size: 1000, ordering: '-id' }
-    })
-    const flows = Array.isArray(res.data?.results)
-      ? res.data.results
-      : (Array.isArray(res.data) ? res.data : [])
-    const activeContractFlows = flows.filter((item) => item?.target_type === 'contract' && item?.is_active)
-    const regionIdSet = new Set()
-    contractHasGlobalFlow.value = false
-    activeContractFlows.forEach((item) => {
-      const scopeMode = item?.scope_mode || 'all_regions'
-      const regionIds = Array.isArray(item?.region_ids) ? item.region_ids : []
-      const legacySingleRegion = scopeMode === 'all_regions' && item?.region != null && regionIds.length === 0
-      if (scopeMode === 'selected_regions' || legacySingleRegion) {
-        regionIds.forEach((rid) => {
-          if (rid != null) regionIdSet.add(Number(rid))
-        })
-        if ((item?.region != null) && regionIds.length === 0) {
-          regionIdSet.add(Number(item.region))
-        }
-      } else {
-        contractHasGlobalFlow.value = true
-      }
-    })
-    contractActiveRegionIds.value = Array.from(regionIdSet)
-    contractFlowLoaded.value = true
-  } catch (err) {
-    // Keep default visible on fetch failure to avoid blocking valid submissions.
   }
 }
 
@@ -1026,6 +1044,12 @@ const resetPaymentForm = () => {
 const resetInvoiceForm = () => {
   invoiceForm.value = {
     invoice_no: '',
+    billing_name: '',
+    taxpayer_no: '',
+    billing_address: '',
+    billing_phone: '',
+    billing_bank_name: '',
+    billing_bank_account: '',
     amount: null,
     issued_at: '',
     tax_rate: null,
@@ -1034,6 +1058,52 @@ const resetInvoiceForm = () => {
     region: form.value.region != null ? Number(form.value.region) : null,
     owner: form.value.owner != null ? Number(form.value.owner) : null
   }
+}
+
+const fillInvoiceBillingFromLastInvoice = async () => {
+  const accountId = form.value.account != null ? Number(form.value.account) : null
+  if (!accountId) return
+  try {
+    const res = await api.get('/invoices/', {
+      params: {
+        account: accountId,
+        page: 1,
+        page_size: 1,
+        ordering: '-created_at'
+      }
+    })
+    const list = Array.isArray(res.data?.results) ? res.data.results : (Array.isArray(res.data) ? res.data : [])
+    const latest = list[0]
+    if (!latest) return
+    invoiceForm.value.billing_name = latest.billing_name || ''
+    invoiceForm.value.taxpayer_no = latest.taxpayer_no || ''
+    invoiceForm.value.billing_address = latest.billing_address || ''
+    invoiceForm.value.billing_phone = latest.billing_phone || ''
+    invoiceForm.value.billing_bank_name = latest.billing_bank_name || ''
+    invoiceForm.value.billing_bank_account = latest.billing_bank_account || ''
+  } catch (err) {
+    // ignore autofill failure to avoid blocking creation
+  }
+}
+
+const openCreateInvoiceModal = async () => {
+  editingInvoiceId.value = null
+  invoiceModalMode.value = 'create'
+  resetInvoiceForm()
+  applyInvoiceDefaults()
+  invoiceError.value = ''
+  invoiceSuccess.value = ''
+  showInvoiceModal.value = true
+  await fillInvoiceBillingFromLastInvoice()
+}
+
+const closeInvoiceModal = () => {
+  if (invoiceSaving.value || invoiceSubmitting.value) return
+  showInvoiceModal.value = false
+  editingInvoiceId.value = null
+  invoiceModalMode.value = 'create'
+  resetInvoiceForm()
+  invoiceError.value = ''
 }
 
 const showQuickCreate = computed(() => {
@@ -1309,8 +1379,15 @@ const cancelEditPayment = () => {
 
 const startEditInvoice = (item) => {
   editingInvoiceId.value = item.id
+  invoiceModalMode.value = 'edit'
   invoiceForm.value = {
     invoice_no: item.invoice_no || '',
+    billing_name: item.billing_name || '',
+    taxpayer_no: item.taxpayer_no || '',
+    billing_address: item.billing_address || '',
+    billing_phone: item.billing_phone || '',
+    billing_bank_name: item.billing_bank_name || '',
+    billing_bank_account: item.billing_bank_account || '',
     amount: item.amount != null ? Number(item.amount) : null,
     issued_at: item.issued_at || '',
     tax_rate: item.tax_rate != null ? Number(item.tax_rate) : null,
@@ -1321,13 +1398,7 @@ const startEditInvoice = (item) => {
   }
   invoiceError.value = ''
   invoiceSuccess.value = ''
-}
-
-const cancelEditInvoice = () => {
-  editingInvoiceId.value = null
-  resetInvoiceForm()
-  invoiceError.value = ''
-  invoiceSuccess.value = ''
+  showInvoiceModal.value = true
 }
 
 const savePayment = async () => {
@@ -1390,67 +1461,144 @@ const savePayment = async () => {
 }
 
 const saveInvoice = async () => {
-  if (!invoiceForm.value.amount) {
-    invoiceError.value = '开票金额不能为空'
-    return
-  }
-  if (!invoiceForm.value.region) {
-    invoiceError.value = '请选择所属区域'
-    return
-  }
-  if (!invoiceForm.value.owner) {
-    invoiceError.value = '请选择负责人'
-    return
-  }
   invoiceError.value = ''
   invoiceSuccess.value = ''
   invoiceSaving.value = true
   try {
-    if (editingInvoiceId.value) {
-      const payload = {
-        invoice_no: invoiceForm.value.invoice_no || '',
-        amount: Number(invoiceForm.value.amount),
-        issued_at: invoiceForm.value.issued_at || null,
-        tax_rate: invoiceForm.value.tax_rate === '' ? null : invoiceForm.value.tax_rate,
-        invoice_type: invoiceForm.value.invoice_type || 'normal',
-        status: invoiceForm.value.status || 'draft',
-        region: Number(invoiceForm.value.region),
-        owner: Number(invoiceForm.value.owner)
-      }
-      await api.patch(`/invoices/${editingInvoiceId.value}/`, payload)
-      invoiceSuccess.value = '开票已更新'
-      editingInvoiceId.value = null
-      resetInvoiceForm()
-    } else {
-      const payload = {
-        contract: Number(route.params.id),
-        account: form.value.account ? Number(form.value.account) : null,
-        invoice_no: invoiceForm.value.invoice_no || '',
-        amount: Number(invoiceForm.value.amount),
-        issued_at: invoiceForm.value.issued_at || null,
-        tax_rate: invoiceForm.value.tax_rate === '' ? null : invoiceForm.value.tax_rate,
-        invoice_type: invoiceForm.value.invoice_type || 'normal',
-        status: invoiceForm.value.status || 'draft',
-        region: Number(invoiceForm.value.region),
-        owner: Number(invoiceForm.value.owner)
-      }
-      await api.post('/invoices/', payload)
-      resetInvoiceForm()
-      invoiceSuccess.value = '开票已保存'
-    }
-    await fetchInvoices()
+    const result = await persistInvoice({ keepFormAfterSave: false })
+    if (!result) return
+    invoiceSuccess.value = result.edited ? '开票已更新' : '开票已保存'
+    showInvoiceModal.value = false
+    invoiceModalMode.value = 'create'
   } catch (err) {
-    const detail = err.response?.data
-    if (detail && typeof detail === 'object') {
-      const messages = Object.entries(detail)
-        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join('；') : value}`)
-        .join(' | ')
-      invoiceError.value = messages || '保存失败，请检查必填项或后端服务'
-    } else {
-      invoiceError.value = '保存失败，请检查必填项或后端服务'
-    }
+    invoiceError.value = extractApiError(err, '保存失败，请检查必填项或后端服务')
   } finally {
     invoiceSaving.value = false
+  }
+}
+
+const extractApiError = (err, fallback) => {
+  const detail = err.response?.data
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.detail === 'string' && detail.detail) {
+      return detail.detail
+    }
+    const messages = Object.entries(detail)
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join('；') : value}`)
+      .join(' | ')
+    return messages || fallback
+  }
+  return fallback
+}
+
+const validateInvoiceForm = () => {
+  if (!invoiceForm.value.amount) {
+    invoiceError.value = '开票金额不能为空'
+    return false
+  }
+  if (!invoiceForm.value.region) {
+    invoiceError.value = '请选择所属区域'
+    return false
+  }
+  if (!invoiceForm.value.owner) {
+    invoiceError.value = '请选择负责人'
+    return false
+  }
+  if (!invoiceForm.value.taxpayer_no?.trim()) {
+    invoiceError.value = '纳税人识别号不能为空'
+    return false
+  }
+  if (!invoiceForm.value.billing_address?.trim()) {
+    invoiceError.value = '地址不能为空'
+    return false
+  }
+  if (!invoiceForm.value.billing_phone?.trim()) {
+    invoiceError.value = '电话不能为空'
+    return false
+  }
+  if (!invoiceForm.value.billing_bank_name?.trim()) {
+    invoiceError.value = '开户银行不能为空'
+    return false
+  }
+  if (!invoiceForm.value.billing_bank_account?.trim()) {
+    invoiceError.value = '银行账号不能为空'
+    return false
+  }
+  return true
+}
+
+const buildInvoicePayload = () => ({
+  invoice_no: invoiceForm.value.invoice_no || '',
+  billing_name: invoiceForm.value.billing_name || '',
+  taxpayer_no: invoiceForm.value.taxpayer_no || '',
+  billing_address: invoiceForm.value.billing_address || '',
+  billing_phone: invoiceForm.value.billing_phone || '',
+  billing_bank_name: invoiceForm.value.billing_bank_name || '',
+  billing_bank_account: invoiceForm.value.billing_bank_account || '',
+  amount: Number(invoiceForm.value.amount),
+  issued_at: invoiceForm.value.issued_at || null,
+  tax_rate: invoiceForm.value.tax_rate === '' ? null : invoiceForm.value.tax_rate,
+  invoice_type: invoiceForm.value.invoice_type || 'normal',
+  status: invoiceForm.value.status || 'draft',
+  region: Number(invoiceForm.value.region),
+  owner: Number(invoiceForm.value.owner)
+})
+
+const persistInvoice = async ({ keepFormAfterSave = false } = {}) => {
+  if (!validateInvoiceForm()) return null
+  const isEditingInvoice = Boolean(editingInvoiceId.value)
+  if (isEditingInvoice) {
+    const invoiceId = Number(editingInvoiceId.value)
+    await api.patch(`/invoices/${invoiceId}/`, buildInvoicePayload())
+    if (!keepFormAfterSave) {
+      editingInvoiceId.value = null
+      resetInvoiceForm()
+    }
+    await fetchInvoices()
+    return { id: invoiceId, edited: true }
+  }
+  const payload = {
+    ...buildInvoicePayload(),
+    contract: Number(route.params.id),
+    account: form.value.account ? Number(form.value.account) : null
+  }
+  const res = await api.post('/invoices/', payload)
+  const invoiceId = Number(res.data?.id)
+  if (!Number.isFinite(invoiceId)) {
+    throw new Error('开票保存成功但未返回有效ID')
+  }
+  if (keepFormAfterSave) {
+    editingInvoiceId.value = invoiceId
+    invoiceModalMode.value = 'edit'
+  } else {
+    resetInvoiceForm()
+  }
+  await fetchInvoices()
+  return { id: invoiceId, edited: false }
+}
+
+const submitInvoiceForApproval = async () => {
+  if (!invoiceApprovalEnabled.value) return
+  invoiceError.value = ''
+  invoiceSuccess.value = ''
+  invoiceSubmitting.value = true
+  let persistedMessage = ''
+  try {
+    const result = await persistInvoice({ keepFormAfterSave: true })
+    if (!result) return
+    persistedMessage = result.edited ? '开票已更新' : '开票已保存'
+    await api.post(`/invoices/${result.id}/submit_approval/`)
+    invoiceSuccess.value = `${persistedMessage}并提交审批`
+    showInvoiceModal.value = false
+    editingInvoiceId.value = null
+    invoiceModalMode.value = 'create'
+    resetInvoiceForm()
+    await fetchInvoices()
+  } catch (err) {
+    const failure = extractApiError(err, '提交审批失败，请检查权限或流程配置')
+    invoiceError.value = persistedMessage ? `${persistedMessage}，但${failure}` : failure
+  } finally {
+    invoiceSubmitting.value = false
   }
 }
 
@@ -1488,7 +1636,7 @@ const deleteInvoice = async (id) => {
     await api.delete(`/invoices/${id}/`)
     invoiceSuccess.value = '开票已删除'
     if (editingInvoiceId.value === id) {
-      cancelEditInvoice()
+      closeInvoiceModal()
     }
     await fetchInvoices()
   } catch (err) {
@@ -1509,7 +1657,8 @@ const deleteInvoice = async (id) => {
 const normalizePayload = () => {
   if (isEdit.value && approvedReadonly.value) {
     return {
-      signed_at: form.value.signed_at || null
+      signed_at: form.value.signed_at || null,
+      status: form.value.status
     }
   }
   const payload = {
@@ -1541,7 +1690,27 @@ const normalizePayload = () => {
 
 const save = async () => {
   if (pendingApprovalReadonly.value) {
-    error.value = '合同审批中，主信息只读'
+    error.value = ''
+    success.value = ''
+    saving.value = true
+    try {
+      await api.patch(`/contracts/${route.params.id}/`, { status: form.value.status })
+      success.value = '合同状态已更新'
+      await loadContract()
+      await fetchApprovalProgress()
+    } catch (err) {
+      const detail = err.response?.data
+      if (detail && typeof detail === 'object') {
+        const messages = Object.entries(detail)
+          .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join('；') : value}`)
+          .join(' | ')
+        error.value = messages || '保存失败，请检查后端服务'
+      } else {
+        error.value = '保存失败，请检查后端服务'
+      }
+    } finally {
+      saving.value = false
+    }
     return
   }
   if (isEdit.value && approvedReadonly.value) {
@@ -1549,8 +1718,11 @@ const save = async () => {
     success.value = ''
     saving.value = true
     try {
-      await api.patch(`/contracts/${route.params.id}/`, { signed_at: form.value.signed_at || null })
-      success.value = '签署日期已更新'
+      await api.patch(`/contracts/${route.params.id}/`, {
+        signed_at: form.value.signed_at || null,
+        status: form.value.status,
+      })
+      success.value = '签署日期和合同状态已更新'
       await loadContract()
       await fetchApprovalProgress()
     } catch (err) {
@@ -1676,7 +1848,6 @@ const goBack = () => {
 
 onMounted(async () => {
   await auth.ensureMeFresh(60000)
-  await fetchContractApprovalFlowConfig()
   await fetchLookups()
   await fetchOpportunities()
   await fetchRegions()
@@ -1733,5 +1904,56 @@ watch(
 <style scoped>
 .contract-detail {
   font-size: 13px;
+}
+
+.invoice-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-card {
+  width: min(1120px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.25);
+  padding: 18px;
+}
+
+.invoice-modal-card {
+  padding-top: 14px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.modal-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>

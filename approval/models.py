@@ -36,6 +36,15 @@ class ApprovalFlow(TimestampedModel):
         (SCOPE_SELECTED_REGIONS, '指定区域'),
     ]
 
+    STATUS_DRAFT = 'draft'
+    STATUS_PUBLISHED = 'published'
+    STATUS_ARCHIVED = 'archived'
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, '草稿'),
+        (STATUS_PUBLISHED, '已发布'),
+        (STATUS_ARCHIVED, '已归档'),
+    ]
+
     name = models.CharField('流程名称', max_length=200)
     target_type = models.CharField('审批对象', max_length=20, choices=TARGET_CHOICES)
     region = models.ForeignKey(
@@ -53,6 +62,10 @@ class ApprovalFlow(TimestampedModel):
         related_name='scoped_approval_flows',
         verbose_name='适用区域',
     )
+    status = models.CharField('流程状态', max_length=20, choices=STATUS_CHOICES, default=STATUS_PUBLISHED)
+    priority = models.PositiveIntegerField('优先级', default=100)
+    effective_from = models.DateTimeField('生效开始时间', null=True, blank=True)
+    effective_to = models.DateTimeField('生效结束时间', null=True, blank=True)
     is_active = models.BooleanField('是否启用', default=True)
 
     class Meta:

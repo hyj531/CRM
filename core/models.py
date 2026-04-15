@@ -571,6 +571,12 @@ class Invoice(OwnedRegionModel):
     account = models.ForeignKey(
         Account, null=True, blank=True, on_delete=models.SET_NULL, related_name='invoices', verbose_name='客户'
     )
+    billing_name = models.CharField('名称', max_length=200, blank=True)
+    taxpayer_no = models.CharField('纳税人识别号', max_length=100, blank=True)
+    billing_address = models.CharField('地址', max_length=255, blank=True)
+    billing_phone = models.CharField('电话', max_length=50, blank=True)
+    billing_bank_name = models.CharField('开户银行', max_length=200, blank=True)
+    billing_bank_account = models.CharField('银行账号', max_length=100, blank=True)
     amount = models.DecimalField('开票金额', max_digits=12, decimal_places=2)
     tax_rate = models.DecimalField('税率', max_digits=5, decimal_places=2, null=True, blank=True)
     invoice_type = models.CharField('开票类型', max_length=20, choices=INVOICE_TYPES, default='normal')

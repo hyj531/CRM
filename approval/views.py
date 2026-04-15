@@ -118,7 +118,7 @@ class ApprovalFlowConfigViewSet(viewsets.ModelViewSet):
     queryset = models.ApprovalFlow.objects.prefetch_related('regions', 'steps')
     serializer_class = serializers.ApprovalFlowConfigSerializer
     permission_classes = [ApprovalFlowConfigPermission]
-    ordering = ['-updated_at', '-id']
+    ordering = ['-priority', '-updated_at', '-id']
 
     def get_queryset(self):
         queryset = self.queryset
@@ -128,6 +128,9 @@ class ApprovalFlowConfigViewSet(viewsets.ModelViewSet):
         is_active = self.request.query_params.get('is_active')
         if is_active in ('true', 'false'):
             queryset = queryset.filter(is_active=(is_active == 'true'))
+        status_value = self.request.query_params.get('status')
+        if status_value:
+            queryset = queryset.filter(status=status_value)
 
         region_id = self.request.query_params.get('region_id')
         if region_id:
@@ -166,6 +169,8 @@ class ApprovalFlowConfigViewSet(viewsets.ModelViewSet):
         steps = list(flow.steps.select_related('approver_role', 'approver_user').order_by('order', 'id'))
         if not steps:
             raise ValueError('至少需要一个审批节点。')
+        if flow.effective_from and flow.effective_to and flow.effective_from > flow.effective_to:
+            raise ValueError('生效结束时间不能早于生效开始时间。')
 
         preview_regions = self._flow_preview_regions(flow)
         if flow.scope_mode == models.ApprovalFlow.SCOPE_SELECTED_REGIONS and not preview_regions:
@@ -192,30 +197,9 @@ class ApprovalFlowConfigViewSet(viewsets.ModelViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            if flow.scope_mode == models.ApprovalFlow.SCOPE_ALL_REGIONS:
-                models.ApprovalFlow.objects.filter(
-                    target_type=flow.target_type,
-                    scope_mode=models.ApprovalFlow.SCOPE_ALL_REGIONS,
-                    is_active=True,
-                ).exclude(id=flow.id).update(is_active=False)
-            else:
-                region_ids = list(flow.regions.values_list('id', flat=True))
-                if region_ids:
-                    overlap_ids = list(
-                        models.ApprovalFlow.objects.filter(
-                            target_type=flow.target_type,
-                            scope_mode=models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
-                            is_active=True,
-                            regions__id__in=region_ids,
-                        )
-                        .exclude(id=flow.id)
-                        .values_list('id', flat=True)
-                        .distinct()
-                    )
-                    if overlap_ids:
-                        models.ApprovalFlow.objects.filter(id__in=overlap_ids).update(is_active=False)
+            flow.status = models.ApprovalFlow.STATUS_PUBLISHED
             flow.is_active = True
-            flow.save(update_fields=['is_active', 'updated_at'])
+            flow.save(update_fields=['status', 'is_active', 'updated_at'])
 
         data = self.get_serializer(flow).data
         return Response(data)

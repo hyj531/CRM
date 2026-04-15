@@ -35,7 +35,6 @@
             <option value="">合同状态</option>
             <option value="draft">草稿</option>
             <option value="signed">已签署</option>
-            <option value="active">履行中</option>
             <option value="closed">已关闭</option>
           </select>
           <select v-model="filters.approval_status">
@@ -133,6 +132,7 @@
         <table class="table contract-table">
           <thead>
             <tr>
+              <th>序号</th>
               <th>合同名称</th>
               <th>合同状态</th>
               <th>审批状态</th>
@@ -149,10 +149,11 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in pagedContracts" :key="item.id">
+            <tr v-for="(item, index) in pagedContracts" :key="item.id">
+              <td>{{ rowNo(index) }}</td>
               <td>
-                <router-link class="link-button" :to="`/contracts/${item.id}`">
-                  {{ item.name || item.contract_no || `合同${item.id}` }}
+                <router-link class="link-button contract-name-cell" :to="`/contracts/${item.id}`" :title="contractDisplayName(item)">
+                  {{ contractDisplayName(item) }}
                 </router-link>
               </td>
               <td>
@@ -178,7 +179,7 @@
               </td>
             </tr>
             <tr v-if="!pagedContracts.length">
-              <td colspan="13" style="color: #888;">暂无数据</td>
+              <td colspan="14" style="color: #888;">暂无数据</td>
             </tr>
           </tbody>
         </table>
@@ -187,6 +188,7 @@
         <table class="table contract-receivable-table">
           <thead>
             <tr>
+              <th>序号</th>
               <th>合同名称</th>
               <th>客户</th>
               <th>合同金额</th>
@@ -199,10 +201,11 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in pagedContracts" :key="item.id" :class="{ 'row-urgent': item.receivable_urgent }">
+            <tr v-for="(item, index) in pagedContracts" :key="item.id" :class="{ 'row-urgent': item.receivable_urgent }">
+              <td>{{ rowNo(index) }}</td>
               <td>
-                <router-link class="link-button" :to="`/contracts/${item.id}`">
-                  {{ item.name || item.contract_no || `合同${item.id}` }}
+                <router-link class="link-button contract-name-cell" :to="`/contracts/${item.id}`" :title="contractDisplayName(item)">
+                  {{ contractDisplayName(item) }}
                 </router-link>
                 <span v-if="item.receivable_urgent" class="badge orange urgent-badge">重点催收</span>
               </td>
@@ -222,7 +225,7 @@
               </td>
             </tr>
             <tr v-if="!pagedContracts.length">
-              <td colspan="9" style="color: #888;">暂无数据</td>
+              <td colspan="10" style="color: #888;">暂无数据</td>
             </tr>
           </tbody>
         </table>
@@ -231,6 +234,11 @@
         <button :disabled="currentPage === 1" @click="changePage(currentPage - 1)">上一页</button>
         <span>第 {{ currentPage }} / {{ pageCount }} 页</span>
         <button :disabled="currentPage === pageCount" @click="changePage(currentPage + 1)">下一页</button>
+        <span>每页</span>
+        <select v-model.number="pageSize" class="compact-select" @change="changePageSize">
+          <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}</option>
+        </select>
+        <span>共 {{ totalCount }} 条</span>
       </div>
     </div>
   </div>
@@ -274,7 +282,8 @@ const accounts = ref([])
 const accountSearch = ref('')
 const showAccountDropdown = ref(false)
 const currentPage = ref(1)
-const pageSize = 10
+const pageSize = ref(10)
+const pageSizeOptions = [10, 20, 50, 100]
 const ordering = ref('-signed_at')
 const activeTab = ref('all')
 const receivableUrgentFilter = ref('')
@@ -288,7 +297,7 @@ const statusLabel = (value) => {
   const map = {
     draft: '草稿',
     signed: '已签署',
-    active: '履行中',
+    active: '执行中',
     closed: '已关闭'
   }
   return map[value] || value || '-'
@@ -348,6 +357,11 @@ const accountName = (accountId) => {
   return acc.full_name || acc.short_name || accountId || '-'
 }
 
+const contractDisplayName = (item) => {
+  if (!item) return '-'
+  return item.name || item.contract_no || `合同${item.id}`
+}
+
 const vendorName = (vendorId) => {
   const item = lookupOptions.value.vendor_company.find((opt) => String(opt.id) === String(vendorId))
   return item ? item.name : (vendorId || '-')
@@ -378,7 +392,7 @@ const setTab = (tab) => {
 const buildParams = () => {
   const params = {
     page: currentPage.value,
-    page_size: pageSize,
+    page_size: pageSize.value,
     ordering: ordering.value
   }
   if (isReceivableTab.value) params.receivable_only = 1
@@ -466,8 +480,9 @@ const listTitle = computed(() => {
   return `共 ${totalCount.value} 份合同`
 })
 
-const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const pagedContracts = computed(() => contracts.value)
+const rowNo = (index) => ((currentPage.value - 1) * pageSize.value) + index + 1
 
 const goCreate = () => {
   router.push('/contracts/new')
@@ -497,6 +512,11 @@ const applyFilters = () => {
 
 const changePage = (page) => {
   currentPage.value = page
+  fetchData()
+}
+
+const changePageSize = () => {
+  currentPage.value = 1
   fetchData()
 }
 
@@ -572,6 +592,61 @@ watch(accountSearch, (val) => {
 <style scoped>
 .filter-autocomplete {
   position: relative;
+}
+
+.contract-table-wrap {
+  --sticky-no-width: 64px;
+  --sticky-name-width: 15em;
+}
+
+.contract-table th:nth-child(1),
+.contract-table td:nth-child(1),
+.contract-receivable-table th:nth-child(1),
+.contract-receivable-table td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: #fff;
+}
+
+.contract-table thead th:nth-child(1),
+.contract-receivable-table thead th:nth-child(1) {
+  z-index: 7;
+  background: #f1f5fb;
+}
+
+.contract-table th:nth-child(2),
+.contract-table td:nth-child(2),
+.contract-receivable-table th:nth-child(2),
+.contract-receivable-table td:nth-child(2) {
+  position: sticky;
+  left: var(--sticky-no-width);
+  z-index: 3;
+  background: #fff;
+  width: var(--sticky-name-width);
+  min-width: var(--sticky-name-width);
+  max-width: var(--sticky-name-width);
+  box-shadow: 10px 0 14px rgba(15, 23, 42, 0.08);
+}
+
+.contract-table thead th:nth-child(2),
+.contract-receivable-table thead th:nth-child(2) {
+  z-index: 6;
+  background: #f1f5fb;
+}
+
+.row-urgent td:nth-child(1),
+.row-urgent td:nth-child(2) {
+  background: #ffe8cc;
+}
+
+.contract-name-cell {
+  display: inline-block;
+  max-width: var(--sticky-name-width);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .filter-left {

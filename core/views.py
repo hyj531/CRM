@@ -356,10 +356,14 @@ class OpportunityViewSet(RegionScopedViewSet):
     @action(detail=False, methods=['get'])
     def summary(self, request):
         from decimal import Decimal
-        from django.db.models import DecimalField, Sum, Value, Count
-        from django.db.models.functions import Coalesce
+        from django.db.models import DecimalField, Sum, Value, Count, F, ExpressionWrapper
+        from django.db.models.functions import Coalesce, Cast, Greatest, Least
 
         queryset = scoping.apply_scope(models.Opportunity.objects.all(), request.user)
+        stage = (request.query_params.get('stage') or '').strip()
+        valid_stages = {value for value, _ in models.Opportunity.STAGES}
+        if stage and stage in valid_stages:
+            queryset = queryset.filter(stage=stage)
 
         totals = queryset.aggregate(
             total_count=Count('id'),
@@ -370,6 +374,27 @@ class OpportunityViewSet(RegionScopedViewSet):
             )
         )
 
+        win_prob_decimal = Cast(
+            Coalesce(F('win_probability'), Value(0)),
+            output_field=DecimalField(max_digits=12, decimal_places=4)
+        )
+        win_prob_clamped = Greatest(Least(win_prob_decimal, Value(100.0)), Value(0.0))
+        percent_expr = ExpressionWrapper(
+            win_prob_clamped / Value(100.0),
+            output_field=DecimalField(max_digits=12, decimal_places=6)
+        )
+        weighted_expr = ExpressionWrapper(
+            Coalesce(F('expected_amount'), Value(0)) * percent_expr,
+            output_field=DecimalField(max_digits=12, decimal_places=2)
+        )
+        weighted_total = queryset.aggregate(
+            weighted_total=Coalesce(
+                Sum(weighted_expr),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        ).get('weighted_total') or Decimal('0')
+
         stage_stats = queryset.values('stage').annotate(count=Count('id'))
         stage_counts = {item['stage']: item['count'] for item in stage_stats}
 
@@ -379,6 +404,7 @@ class OpportunityViewSet(RegionScopedViewSet):
         return Response({
             'total_count': totals.get('total_count') or 0,
             'total_amount': totals.get('total_amount') or Decimal('0'),
+            'weighted_total': weighted_total,
             'won_count': won_count,
             'lost_count': lost_count,
             'stage_counts': stage_counts,

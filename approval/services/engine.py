@@ -1,6 +1,6 @@
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from approval import models
@@ -15,6 +15,24 @@ def _resolve_target_type(target_obj):
     if not adapter:
         raise ValueError('Unsupported target type')
     return adapter.get_target_type()
+
+
+def _missing_flow_error(target_type):
+    mapping = {
+        models.ApprovalFlow.TARGET_CONTRACT: '未配置启用的合同审批流程。',
+        models.ApprovalFlow.TARGET_INVOICE: '未配置启用的开票审批流程。',
+        models.ApprovalFlow.TARGET_QUOTE: '未配置启用的报价审批流程。',
+    }
+    return mapping.get(target_type, '未配置启用的审批流程。')
+
+
+def _missing_flow_steps_error(target_type):
+    mapping = {
+        models.ApprovalFlow.TARGET_CONTRACT: '合同审批流程未配置节点，请先配置流程。',
+        models.ApprovalFlow.TARGET_INVOICE: '开票审批流程未配置节点，请先配置流程。',
+        models.ApprovalFlow.TARGET_QUOTE: '报价审批流程未配置节点，请先配置流程。',
+    }
+    return mapping.get(target_type, '审批流程未配置节点，请先配置流程。')
 
 
 def _log_action(instance, action, actor=None, task=None, from_status='', to_status='', comment='', extra=None):
@@ -32,89 +50,52 @@ def _log_action(instance, action, actor=None, task=None, from_status='', to_stat
 
 def get_flow_for_region(target_type, region):
     region_id = getattr(region, 'id', None) if region is not None else None
-    base_qs = models.ApprovalFlow.objects.filter(target_type=target_type, is_active=True)
+    now = timezone.now()
+    base_qs = models.ApprovalFlow.objects.filter(
+        target_type=target_type,
+        is_active=True,
+        status=models.ApprovalFlow.STATUS_PUBLISHED,
+    ).filter(
+        Q(effective_from__isnull=True) | Q(effective_from__lte=now),
+        Q(effective_to__isnull=True) | Q(effective_to__gte=now),
+    )
+
+    def ranked(qs):
+        return qs.order_by('-priority', F('effective_from').desc(nulls_last=True), '-id').distinct()
 
     if region_id is not None:
-        selected_scope_qs = (
+        selected_scope_qs = ranked(
             base_qs.filter(scope_mode=models.ApprovalFlow.SCOPE_SELECTED_REGIONS, regions__id=region_id)
-            .order_by('-id')
-            .distinct()
         )
         selected_flow = selected_scope_qs.first()
         if selected_flow:
             return selected_flow
 
         # Legacy compatibility: old single-region data before scope migration.
-        legacy_region_flow = (
+        legacy_region_flow = ranked(
             base_qs.filter(
                 scope_mode=models.ApprovalFlow.SCOPE_SELECTED_REGIONS,
                 regions__isnull=True,
                 region_id=region_id,
             )
-            .order_by('-id')
-            .first()
-        )
+        ).first()
         if legacy_region_flow:
             return legacy_region_flow
 
-        legacy_single_region_flow = base_qs.filter(region_id=region_id).order_by('-id').first()
+        legacy_single_region_flow = ranked(base_qs.filter(region_id=region_id)).first()
         if legacy_single_region_flow:
             return legacy_single_region_flow
 
-    all_regions_flow = (
+    all_regions_flow = ranked(
         base_qs.filter(
             Q(scope_mode=models.ApprovalFlow.SCOPE_ALL_REGIONS)
             | Q(scope_mode=models.ApprovalFlow.SCOPE_SELECTED_REGIONS, regions__isnull=True, region__isnull=True)
         )
-        .order_by('-id')
-        .distinct()
-        .first()
-    )
+    ).first()
     if all_regions_flow:
         return all_regions_flow
 
-    return base_qs.filter(region__isnull=True).order_by('-id').first()
-
-
-def _get_fallback_admin_user():
-    return core_models.User.objects.filter(is_superuser=True, is_active=True).order_by('id').first()
-
-
-def _get_or_create_admin_flow(target_type):
-    admin_user = _get_fallback_admin_user()
-    if not admin_user:
-        raise ValueError('No active approval flow configured, and no superuser available')
-
-    flow = (
-        models.ApprovalFlow.objects
-        .filter(
-            target_type=target_type,
-            is_active=True,
-            scope_mode=models.ApprovalFlow.SCOPE_ALL_REGIONS,
-            region__isnull=True,
-            name='系统默认审批流程',
-        )
-        .order_by('-id')
-        .first()
-    )
-    if not flow:
-        flow = models.ApprovalFlow.objects.create(
-            name='系统默认审批流程',
-            target_type=target_type,
-            region=None,
-            scope_mode=models.ApprovalFlow.SCOPE_ALL_REGIONS,
-            is_active=True,
-        )
-    if not flow.steps.exists():
-        models.ApprovalStep.objects.create(
-            flow=flow,
-            order=1,
-            name='超级管理员审批',
-            assignee_type=models.ApprovalStep.ASSIGNEE_TYPE_USER,
-            assignee_scope=models.ApprovalStep.ASSIGNEE_SCOPE_REGION,
-            approver_user=admin_user,
-        )
-    return flow
+    return ranked(base_qs.filter(region__isnull=True)).first()
 
 
 def _resolve_step_assignees(step, region):
@@ -306,7 +287,10 @@ def start_approval(target_obj, user):
 
     flow = get_flow_for_region(target_type, region)
     if not flow:
-        flow = _get_or_create_admin_flow(target_type)
+        raise ValueError(_missing_flow_error(target_type))
+    steps = list(flow.steps.all())
+    if not steps:
+        raise ValueError(_missing_flow_steps_error(target_type))
 
     content_type = ContentType.objects.get_for_model(target_obj.__class__)
     pending_exists = models.ApprovalInstance.objects.filter(
@@ -335,21 +319,6 @@ def start_approval(target_obj, user):
     )
 
     _sync_target_status(target_obj, models.ApprovalInstance.STATUS_PENDING)
-
-    steps = list(flow.steps.all())
-    if not steps:
-        old_status = instance.status
-        instance.status = models.ApprovalInstance.STATUS_APPROVED
-        instance.save(update_fields=['status', 'updated_at'])
-        _sync_target_status(target_obj, models.ApprovalInstance.STATUS_APPROVED)
-        _log_action(
-            instance=instance,
-            action=models.ApprovalActionLog.ACTION_COMPLETED,
-            actor=user,
-            from_status=old_status,
-            to_status=models.ApprovalInstance.STATUS_APPROVED,
-        )
-        return instance
 
     tasks = []
     for index, step in enumerate(steps, start=1):

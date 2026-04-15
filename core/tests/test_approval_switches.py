@@ -189,6 +189,38 @@ class ApprovalSwitchesAPITests(APITestCase):
             ).exists()
         )
 
+    def test_contract_submit_approval_blocks_when_no_active_flow(self):
+        approval_models.ApprovalFlow.objects.filter(
+            target_type=approval_models.ApprovalFlow.TARGET_CONTRACT
+        ).update(is_active=False)
+        response = self.client.post(reverse('contract-submit-approval', args=[self.contract.id]), {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('未配置启用的合同审批流程', response.data.get('detail', ''))
+
+    def test_invoice_submit_approval_blocks_when_no_active_flow(self):
+        approval_models.ApprovalFlow.objects.filter(
+            target_type=approval_models.ApprovalFlow.TARGET_INVOICE
+        ).update(is_active=False)
+        response = self.client.post(reverse('invoice-submit-approval', args=[self.invoice.id]), {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('未配置启用的开票审批流程', response.data.get('detail', ''))
+
+    def test_contract_submit_approval_blocks_when_flow_has_no_steps(self):
+        approval_models.ApprovalStep.objects.filter(
+            flow__target_type=approval_models.ApprovalFlow.TARGET_CONTRACT
+        ).delete()
+        response = self.client.post(reverse('contract-submit-approval', args=[self.contract.id]), {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('未配置节点', response.data.get('detail', ''))
+
+    def test_invoice_submit_approval_blocks_when_flow_has_no_steps(self):
+        approval_models.ApprovalStep.objects.filter(
+            flow__target_type=approval_models.ApprovalFlow.TARGET_INVOICE
+        ).delete()
+        response = self.client.post(reverse('invoice-submit-approval', args=[self.invoice.id]), {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('未配置节点', response.data.get('detail', ''))
+
     def test_contract_delete_pending_blocked_only_when_switch_enabled(self):
         contract = models.Contract.objects.create(
             account=self.account,
@@ -299,6 +331,15 @@ class ApprovalSwitchesAPITests(APITestCase):
         response = self.client.post(reverse('contract-submit-approval', args=[self.contract.id]), {}, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
+        status_resp = self.client.patch(
+            reverse('contract-detail', args=[self.contract.id]),
+            {'status': 'signed'},
+            format='json',
+        )
+        self.assertEqual(status_resp.status_code, status.HTTP_200_OK)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.status, 'signed')
+
         patch_resp = self.client.patch(
             reverse('contract-detail', args=[self.contract.id]),
             {'name': '审批中修改', 'signed_at': '2026-04-01'},
@@ -307,19 +348,20 @@ class ApprovalSwitchesAPITests(APITestCase):
         self.assertEqual(patch_resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('只读', patch_resp.data.get('detail', ''))
 
-    def test_contract_approved_allows_signed_at_only(self):
+    def test_contract_approved_allows_signed_at_and_status(self):
         self._approve_contract(self.contract)
         self.contract.refresh_from_db()
         self.assertEqual(self.contract.approval_status, 'approved')
 
         signed_resp = self.client.patch(
             reverse('contract-detail', args=[self.contract.id]),
-            {'signed_at': '2026-04-08'},
+            {'signed_at': '2026-04-08', 'status': 'closed'},
             format='json',
         )
         self.assertEqual(signed_resp.status_code, status.HTTP_200_OK)
         self.contract.refresh_from_db()
         self.assertEqual(str(self.contract.signed_at), '2026-04-08')
+        self.assertEqual(self.contract.status, 'closed')
 
         blocked_resp = self.client.patch(
             reverse('contract-detail', args=[self.contract.id]),
@@ -327,7 +369,7 @@ class ApprovalSwitchesAPITests(APITestCase):
             format='json',
         )
         self.assertEqual(blocked_resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('仅允许修改签署日期', blocked_resp.data.get('detail', ''))
+        self.assertIn('仅允许修改签署日期和合同状态', blocked_resp.data.get('detail', ''))
 
     def test_contract_start_revision_unlocks_main_fields(self):
         self._approve_contract(self.contract)
@@ -379,11 +421,13 @@ class ApprovalSwitchesAPITests(APITestCase):
             format='json',
         )
         self.assertEqual(blocked_resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('仅允许修改签署日期', blocked_resp.data.get('detail', ''))
+        self.assertIn('仅允许修改签署日期和合同状态', blocked_resp.data.get('detail', ''))
 
         signed_resp = self.client.patch(
             reverse('contract-detail', args=[self.contract.id]),
-            {'signed_at': '2026-04-14'},
+            {'signed_at': '2026-04-14', 'status': 'closed'},
             format='json',
         )
         self.assertEqual(signed_resp.status_code, status.HTTP_200_OK)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.status, 'closed')

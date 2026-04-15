@@ -3,29 +3,29 @@
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">商机总数</div>
-      <div class="stat-value">{{ summaryTotalCount }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">转化率</div>
-      <div class="stat-value">{{ summaryConversionRate }}</div>
+      <div class="stat-value">{{ cardSummaryTotalCount }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">预计金额合计</div>
-      <div class="stat-value">{{ summaryTotalAmount }}</div>
+      <div class="stat-value">{{ cardSummaryTotalAmount }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">概率成交金额</div>
+      <div class="stat-value">{{ cardSummaryWeightedAmount }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">成交数</div>
-      <div class="stat-value">{{ summaryWonCount }}</div>
+      <div class="stat-value">{{ cardSummaryWonCount }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">商机关闭数</div>
-      <div class="stat-value">{{ summaryLostCount }}</div>
+      <div class="stat-value">{{ cardSummaryLostCount }}</div>
       </div>
     </div>
 
     <div class="tabs">
       <button class="tab" :class="{ active: !filters.stage }" @click="setStage('')">
-        全部 ({{ summaryTotalCount }})
+        全部 ({{ baseSummaryTotalCount }})
       </button>
       <button
         v-for="s in stages"
@@ -34,7 +34,7 @@
         :class="{ active: filters.stage === s.value }"
         @click="setStage(s.value)"
       >
-        {{ s.label }} ({{ summaryStageCount(s.value) }})
+        {{ s.label }} ({{ baseSummaryStageCount(s.value) }})
       </button>
     </div>
 
@@ -122,6 +122,7 @@
         <table class="table opportunity-table">
           <thead>
             <tr>
+              <th>序号</th>
               <th>商机名称</th>
               <th>阶段</th>
               <th>预计金额</th>
@@ -133,7 +134,8 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in pagedOpportunities" :key="item.id">
+            <tr v-for="(item, index) in pagedOpportunities" :key="item.id">
+              <td>{{ rowNo(index) }}</td>
               <td>
                 <router-link class="link-button" :to="`/opportunities/${item.id}`">
                   {{ item.opportunity_name }}
@@ -153,7 +155,7 @@
               </td>
             </tr>
             <tr v-if="!pagedOpportunities.length">
-              <td colspan="8" style="color: #888;">暂无数据</td>
+              <td colspan="9" style="color: #888;">暂无数据</td>
             </tr>
           </tbody>
         </table>
@@ -162,6 +164,11 @@
         <button :disabled="currentPage === 1" @click="changePage(currentPage - 1)">上一页</button>
         <span>第 {{ currentPage }} / {{ pageCount }} 页</span>
         <button :disabled="currentPage === pageCount" @click="changePage(currentPage + 1)">下一页</button>
+        <span>每页</span>
+        <select v-model.number="pageSize" class="compact-select" @change="changePageSize">
+          <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}</option>
+        </select>
+        <span>共 {{ totalCount }} 条</span>
       </div>
     </div>
   </div>
@@ -175,9 +182,18 @@ import api from '../api'
 
 const opportunities = ref([])
 const total = ref(0)
-const summary = ref({
+const baseSummary = ref({
   total_count: 0,
   total_amount: '0.00',
+  weighted_total: '0.00',
+  won_count: 0,
+  lost_count: 0,
+  stage_counts: {}
+})
+const cardSummary = ref({
+  total_count: 0,
+  total_amount: '0.00',
+  weighted_total: '0.00',
   won_count: 0,
   lost_count: 0,
   stage_counts: {}
@@ -224,7 +240,8 @@ const showAccountDropdown = ref(false)
 const users = ref([])
 const usersError = ref('')
 const currentPage = ref(1)
-const pageSize = 10
+const pageSize = ref(10)
+const pageSizeOptions = [10, 20, 50, 100]
 const ordering = ref('-created_at')
 
 const stageLabel = (stage) => {
@@ -293,7 +310,7 @@ const hideAccountDropdown = () => {
 const buildParams = () => {
   const params = {
     page: currentPage.value,
-    page_size: pageSize,
+    page_size: pageSize.value,
     ordering: ordering.value
   }
   if (search.value) params.search = search.value
@@ -330,53 +347,63 @@ const fetchData = async () => {
   }
 }
 
-const fetchSummary = async () => {
+const emptySummary = () => ({
+  total_count: 0,
+  total_amount: '0.00',
+  weighted_total: '0.00',
+  won_count: 0,
+  lost_count: 0,
+  stage_counts: {}
+})
+
+const fetchBaseSummary = async () => {
   try {
     const res = await api.get('/opportunities/summary/')
-    summary.value = res.data || {
-      total_count: 0,
-      total_amount: '0.00',
-      won_count: 0,
-      lost_count: 0,
-      stage_counts: {}
-    }
+    baseSummary.value = res.data || emptySummary()
   } catch (err) {
-    summary.value = {
-      total_count: 0,
-      total_amount: '0.00',
-      won_count: 0,
-      lost_count: 0,
-      stage_counts: {}
-    }
+    baseSummary.value = emptySummary()
+  }
+}
+
+const fetchCardSummary = async () => {
+  try {
+    const params = {}
+    if (filters.value.stage) params.stage = filters.value.stage
+    const res = await api.get('/opportunities/summary/', { params })
+    cardSummary.value = res.data || emptySummary()
+  } catch (err) {
+    cardSummary.value = emptySummary()
   }
 }
 
 const totalCount = computed(() => total.value)
-const summaryTotalCount = computed(() => Number(summary.value.total_count || 0))
-const summaryTotalAmount = computed(() => {
-  const value = Number(summary.value.total_amount || 0)
+const cardSummaryTotalCount = computed(() => Number(cardSummary.value.total_count || 0))
+const cardSummaryTotalAmount = computed(() => {
+  const value = Number(cardSummary.value.total_amount || 0)
   if (!Number.isFinite(value)) return '0.00'
   return cardMoneyFormatter.format(value)
 })
-const summaryWonCount = computed(() => Number(summary.value.won_count || 0))
-const summaryLostCount = computed(() => Number(summary.value.lost_count || 0))
-const summaryConversionRate = computed(() => {
-  const totalItems = summaryTotalCount.value || 0
-  if (!totalItems) return '0%'
-  const rate = (summaryWonCount.value / totalItems) * 100
-  return `${rate.toFixed(2)}%`
+const cardSummaryWeightedAmount = computed(() => {
+  const value = Number(cardSummary.value.weighted_total || 0)
+  if (!Number.isFinite(value)) return '0.00'
+  return cardMoneyFormatter.format(value)
 })
+const cardSummaryWonCount = computed(() => Number(cardSummary.value.won_count || 0))
+const cardSummaryLostCount = computed(() => Number(cardSummary.value.lost_count || 0))
 
-const summaryStageCount = (stageValue) => Number(summary.value.stage_counts?.[stageValue] || 0)
+const baseSummaryTotalCount = computed(() => Number(baseSummary.value.total_count || 0))
+const baseSummaryStageCount = (stageValue) => Number(baseSummary.value.stage_counts?.[stageValue] || 0)
 
-const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const pagedOpportunities = computed(() => {
   return opportunities.value
 })
+const rowNo = (index) => ((currentPage.value - 1) * pageSize.value) + index + 1
 
 const setStage = (value) => {
   filters.value.stage = value
   applyFilters()
+  fetchCardSummary()
 }
 
 const goCreate = () => {
@@ -423,6 +450,7 @@ const resetFilters = () => {
   search.value = ''
   filters.value = { stage: '', opportunity_category: '', customer_level: '', region: '', account: '', owner: '' }
   applyFilters()
+  fetchCardSummary()
 }
 
 const applyFilters = () => {
@@ -432,6 +460,11 @@ const applyFilters = () => {
 
 const changePage = (page) => {
   currentPage.value = page
+  fetchData()
+}
+
+const changePageSize = () => {
+  currentPage.value = 1
   fetchData()
 }
 
@@ -455,6 +488,8 @@ const deleteOpportunity = async (id) => {
   try {
     await api.delete(`/opportunities/${id}/`)
     await fetchData()
+    await fetchBaseSummary()
+    await fetchCardSummary()
   } catch (err) {
     const status = err.response?.status
     if (status === 403) {
@@ -475,7 +510,8 @@ onMounted(async () => {
   await fetchRegions()
   await fetchAccounts()
   await fetchUsers()
-  await fetchSummary()
+  await fetchBaseSummary()
+  await fetchCardSummary()
   await fetchData()
 })
 

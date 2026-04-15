@@ -86,6 +86,10 @@ class ApprovalFlowSerializer(serializers.ModelSerializer):
             'region',
             'scope_mode',
             'region_ids',
+            'status',
+            'priority',
+            'effective_from',
+            'effective_to',
             'is_active',
             'created_at',
             'updated_at',
@@ -95,10 +99,19 @@ class ApprovalFlowSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         scope_mode = attrs.get('scope_mode')
         regions = attrs.get('regions')
+        status_value = attrs.get('status')
+        effective_from = attrs.get('effective_from')
+        effective_to = attrs.get('effective_to')
         if self.instance:
             scope_mode = scope_mode or self.instance.scope_mode
             if regions is None:
                 regions = self.instance.regions.all()
+            if status_value is None:
+                status_value = self.instance.status
+            if effective_from is None:
+                effective_from = self.instance.effective_from
+            if effective_to is None:
+                effective_to = self.instance.effective_to
 
         if scope_mode == models.ApprovalFlow.SCOPE_SELECTED_REGIONS:
             if not regions:
@@ -107,6 +120,12 @@ class ApprovalFlowSerializer(serializers.ModelSerializer):
             pass
         else:
             raise serializers.ValidationError({'scope_mode': '适用范围非法。'})
+        if effective_from and effective_to and effective_from > effective_to:
+            raise serializers.ValidationError({'effective_to': '生效结束时间不能早于生效开始时间。'})
+        if status_value == models.ApprovalFlow.STATUS_PUBLISHED:
+            attrs['is_active'] = True
+        elif status_value in (models.ApprovalFlow.STATUS_DRAFT, models.ApprovalFlow.STATUS_ARCHIVED):
+            attrs['is_active'] = False
         return attrs
 
 
@@ -170,6 +189,10 @@ class ApprovalFlowConfigSerializer(serializers.ModelSerializer):
             'target_type',
             'scope_mode',
             'region_ids',
+            'status',
+            'priority',
+            'effective_from',
+            'effective_to',
             'is_active',
             'steps',
             'created_at',
@@ -191,13 +214,29 @@ class ApprovalFlowConfigSerializer(serializers.ModelSerializer):
 
         scope_mode = attrs.get('scope_mode')
         regions = attrs.get('regions')
+        status_value = attrs.get('status')
+        effective_from = attrs.get('effective_from')
+        effective_to = attrs.get('effective_to')
         if self.instance:
             scope_mode = scope_mode or self.instance.scope_mode
             if regions is None:
                 regions = self.instance.regions.all()
+            if status_value is None:
+                status_value = self.instance.status
+            if effective_from is None:
+                effective_from = self.instance.effective_from
+            if effective_to is None:
+                effective_to = self.instance.effective_to
 
         if scope_mode == models.ApprovalFlow.SCOPE_SELECTED_REGIONS and not regions:
             raise serializers.ValidationError({'region_ids': '指定区域范围必须至少选择一个区域。'})
+        if effective_from and effective_to and effective_from > effective_to:
+            raise serializers.ValidationError({'effective_to': '生效结束时间不能早于生效开始时间。'})
+
+        if status_value == models.ApprovalFlow.STATUS_PUBLISHED:
+            attrs['is_active'] = True
+        elif status_value in (models.ApprovalFlow.STATUS_DRAFT, models.ApprovalFlow.STATUS_ARCHIVED):
+            attrs['is_active'] = False
         return attrs
 
     def to_representation(self, instance):

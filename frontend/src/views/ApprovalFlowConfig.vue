@@ -35,7 +35,7 @@
             <div class="flow-title">{{ flow.name }}</div>
             <div class="flow-meta">
               <span>{{ flow.scope_mode === 'all_regions' ? '全部区域' : `指定区域(${flow.region_ids?.length || 0})` }}</span>
-              <span :class="['badge', flow.is_active ? 'green' : 'gray']">{{ flow.is_active ? '已发布' : '草稿' }}</span>
+              <span :class="['badge', flowStatusBadge(flow)]">{{ flowStatusLabel(flow) }}</span>
             </div>
           </button>
           <div v-if="!flows.length" class="empty-line">暂无流程</div>
@@ -55,6 +55,26 @@
               <option value="all_regions">全部区域</option>
               <option value="selected_regions">指定区域</option>
             </select>
+          </div>
+          <div>
+            <label>流程状态</label>
+            <select v-model="form.status">
+              <option value="draft">草稿</option>
+              <option value="published">已发布</option>
+              <option value="archived">已归档</option>
+            </select>
+          </div>
+          <div>
+            <label>优先级（越大越优先）</label>
+            <input v-model.number="form.priority" type="number" min="0" />
+          </div>
+          <div>
+            <label>生效开始时间</label>
+            <input v-model="form.effective_from" type="datetime-local" />
+          </div>
+          <div>
+            <label>生效结束时间</label>
+            <input v-model="form.effective_to" type="datetime-local" />
           </div>
           <div v-if="form.scope_mode === 'selected_regions'" class="full">
             <label>适用区域（可多选）</label>
@@ -208,9 +228,49 @@ const createForm = () => ({
   target_type: targetType.value,
   scope_mode: 'all_regions',
   region_ids: [],
+  status: 'draft',
+  priority: 100,
+  effective_from: '',
+  effective_to: '',
   is_active: false,
   steps: [createStep()]
 })
+
+const flowStatusValue = (flow) => {
+  if (flow?.status) return flow.status
+  return flow?.is_active ? 'published' : 'draft'
+}
+
+const flowStatusLabel = (flow) => {
+  const map = {
+    draft: '草稿',
+    published: '已发布',
+    archived: '已归档'
+  }
+  return map[flowStatusValue(flow)] || '草稿'
+}
+
+const flowStatusBadge = (flow) => {
+  const value = flowStatusValue(flow)
+  if (value === 'published') return 'green'
+  if (value === 'archived') return 'orange'
+  return 'gray'
+}
+
+const toDatetimeLocalInput = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (num) => String(num).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+const toApiDatetime = (value) => {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toISOString()
+}
 
 const form = ref(createForm())
 
@@ -233,6 +293,10 @@ const hydrateFlowToForm = (flow) => {
     target_type: flow.target_type || targetType.value,
     scope_mode: flow.scope_mode || 'all_regions',
     region_ids: Array.isArray(flow.region_ids) ? flow.region_ids.map((x) => Number(x)) : [],
+    status: flowStatusValue(flow),
+    priority: Number.isFinite(Number(flow.priority)) ? Number(flow.priority) : 100,
+    effective_from: toDatetimeLocalInput(flow.effective_from),
+    effective_to: toDatetimeLocalInput(flow.effective_to),
     is_active: Boolean(flow.is_active),
     steps: Array.isArray(flow.steps) && flow.steps.length
       ? flow.steps.map((step) => ({
@@ -261,7 +325,7 @@ const loadMeta = async () => {
 
 const loadFlows = async () => {
   const resp = await api.get('/approval-flow-configs/', {
-    params: { target_type: targetType.value, ordering: '-updated_at' }
+    params: { target_type: targetType.value }
   })
   flows.value = normalizeArray(resp)
   if (selectedFlowId.value) {
@@ -321,10 +385,14 @@ const buildPayload = () => ({
   name: form.value.name,
   target_type: targetType.value,
   scope_mode: form.value.scope_mode,
+  status: form.value.status,
+  priority: Number.isFinite(Number(form.value.priority)) ? Number(form.value.priority) : 100,
+  effective_from: toApiDatetime(form.value.effective_from),
+  effective_to: toApiDatetime(form.value.effective_to),
   region_ids: form.value.scope_mode === 'selected_regions'
     ? form.value.region_ids.map((x) => Number(x))
     : [],
-  is_active: Boolean(form.value.is_active),
+  is_active: form.value.status === 'published',
   steps: form.value.steps.map((step, index) => ({
     id: step.id || undefined,
     order: index + 1,

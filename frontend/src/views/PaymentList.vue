@@ -77,6 +77,7 @@
           <table class="table payment-table">
             <thead>
               <tr>
+                <th>序号</th>
                 <th>合同名称</th>
                 <th>合同金额</th>
                 <th>合同甲方</th>
@@ -92,7 +93,8 @@
             </tr>
           </thead>
           <tbody>
-              <tr v-for="item in pagedPayments" :key="item.id">
+              <tr v-for="(item, index) in pagedPayments" :key="item.id">
+                <td>{{ rowNo(index) }}</td>
                 <td>{{ contractDisplayName(item.contract) }}</td>
                 <td>{{ contractAmount(item.contract) }}</td>
                 <td>{{ contractAccountName(item.contract) }}</td>
@@ -110,7 +112,7 @@
                 </td>
             </tr>
               <tr v-if="!pagedPayments.length">
-                <td colspan="12" style="color: #888;">暂无数据</td>
+                <td colspan="13" style="color: #888;">暂无数据</td>
               </tr>
             </tbody>
           </table>
@@ -119,6 +121,11 @@
           <button :disabled="currentPage === 1" @click="changePage(currentPage - 1)">上一页</button>
           <span>第 {{ currentPage }} / {{ pageCount }} 页</span>
           <button :disabled="currentPage === pageCount" @click="changePage(currentPage + 1)">下一页</button>
+          <span>每页</span>
+          <select v-model.number="pageSize" class="compact-select" @change="changePageSize">
+            <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}</option>
+          </select>
+          <span>共 {{ totalCount }} 条</span>
         </div>
     </div>
   </div>
@@ -155,7 +162,8 @@ const ownerFilter = ref('')
 const paidAtStart = ref('')
 const paidAtEnd = ref('')
 const currentPage = ref(1)
-const pageSize = 10
+const pageSize = ref(10)
+const pageSizeOptions = [10, 20, 50, 100]
 const ordering = ref('-paid_at')
 
 const statusLabel = (value) => {
@@ -175,8 +183,9 @@ const totalAmount = computed(() => {
 })
 const paidCount = computed(() => payments.value.filter((item) => item.status === 'paid').length)
 
-const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const pagedPayments = computed(() => payments.value)
+const rowNo = (index) => ((currentPage.value - 1) * pageSize.value) + index + 1
 
 const formatMoney = (value) => {
   const num = Number(value)
@@ -206,7 +215,7 @@ const contractAccountName = (contractId) => {
 const buildParams = () => {
   const params = {
     page: currentPage.value,
-    page_size: pageSize,
+    page_size: pageSize.value,
     ordering: ordering.value
   }
   if (search.value) params.search = search.value
@@ -309,6 +318,11 @@ const resetFilters = () => {
 
 const changePage = (page) => {
   currentPage.value = page
+  fetchData()
+}
+
+const changePageSize = () => {
+  currentPage.value = 1
   fetchData()
 }
 

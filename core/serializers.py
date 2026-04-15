@@ -396,16 +396,18 @@ class ContractSerializer(serializers.ModelSerializer):
             ]
 
             if approval_instance_status == 'pending' and changed_fields:
-                raise serializers.ValidationError({'detail': '合同审批中，主信息为只读。'})
+                disallowed_fields = [name for name in changed_fields if name != 'status']
+                if disallowed_fields:
+                    raise serializers.ValidationError({'detail': '合同审批中，除合同状态外主信息只读。'})
 
             if (
                 instance.approval_status == 'approved'
                 and approval_instance_status == 'approved'
             ):
-                disallowed_fields = [name for name in changed_fields if name != 'signed_at']
+                disallowed_fields = [name for name in changed_fields if name not in {'signed_at', 'status'}]
                 if disallowed_fields:
                     raise serializers.ValidationError({
-                        'detail': '合同已审批通过，仅允许修改签署日期。请先发起修订后再修改其它字段并重新提交审批。'
+                        'detail': '合同已审批通过，仅允许修改签署日期和合同状态。请先发起修订后再修改其它字段并重新提交审批。'
                     })
         return super().update(instance, validated_data)
 
