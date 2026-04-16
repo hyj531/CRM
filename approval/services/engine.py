@@ -156,24 +156,16 @@ def _build_todo_title(task, instance):
         models.ApprovalFlow.TARGET_INVOICE: '开票审批',
     }.get(instance.target_type, '审批')
 
-    flow_name = ''
-    step = getattr(task, 'step', None)
-    if step:
-        flow = getattr(step, 'flow', None)
-        flow_name = (getattr(flow, 'name', '') or '').strip()
+    instance_title = ''
+    target_obj = getattr(instance, 'content_object', None)
+    adapter = registry.get_adapter_for_type(instance.target_type)
+    if adapter and target_obj:
+        instance_title = (adapter.get_title(target_obj) or '').strip()
 
-    if not flow_name and getattr(task, 'step_id', None):
-        flow_name = (
-            models.ApprovalStep.objects
-            .filter(id=task.step_id)
-            .values_list('flow__name', flat=True)
-            .first() or ''
-        ).strip()
+    if not instance_title:
+        instance_title = f'{instance.target_type} #{instance.object_id}'
 
-    if not flow_name:
-        flow_name = '审批流程'
-
-    return f'{target_type_label} - {flow_name}'
+    return f'{target_type_label} - {instance_title}'
 
 
 def _schedule_task_create_todo(task, instance):

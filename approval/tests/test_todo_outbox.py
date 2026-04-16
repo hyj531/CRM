@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from django.contrib.contenttypes.models import ContentType
 from django.test import override_settings
@@ -169,18 +169,21 @@ class ApprovalTodoOutboxTests(APITestCase):
             1,
         )
 
-    def test_contract_todo_title_uses_target_and_flow_name(self):
+    def test_contract_todo_title_uses_target_and_instance_title(self):
         self._create_flow(parallel=False, name='华东合同流程')
+        self.contract.name = '合同实例标题A'
+        self.contract.save(update_fields=['name'])
         with self.captureOnCommitCallbacks(execute=True):
             instance = engine.start_approval(self.contract, self.owner)
 
-        self.assertEqual(self._latest_create_outbox_title(instance), '合同审批 - 华东合同流程')
+        self.assertEqual(self._latest_create_outbox_title(instance), '合同审批 - 合同实例标题A')
 
-    def test_invoice_todo_title_uses_target_and_flow_name(self):
+    def test_invoice_todo_title_uses_target_and_instance_title(self):
         self._create_invoice_flow(name='华东开票流程')
         invoice = core_models.Invoice.objects.create(
             contract=self.contract,
             account=self.account,
+            invoice_no='INV-2026-001',
             amount='300.00',
             region=self.region,
             owner=self.owner,
@@ -190,14 +193,16 @@ class ApprovalTodoOutboxTests(APITestCase):
         with self.captureOnCommitCallbacks(execute=True):
             instance = engine.start_approval(invoice, self.owner)
 
-        self.assertEqual(self._latest_create_outbox_title(instance), '开票审批 - 华东开票流程')
+        self.assertEqual(self._latest_create_outbox_title(instance), '开票审批 - INV-2026-001')
 
-    def test_todo_title_falls_back_to_default_flow_name(self):
+    @patch('approval.services.engine.registry.get_adapter_for_type')
+    def test_todo_title_falls_back_to_target_type_and_object_id_when_instance_title_missing(self, mocked_get_adapter):
+        mocked_get_adapter.return_value = Mock(get_title=Mock(return_value=''))
         self._create_flow(parallel=False, name='')
         with self.captureOnCommitCallbacks(execute=True):
             instance = engine.start_approval(self.contract, self.owner)
 
-        self.assertEqual(self._latest_create_outbox_title(instance), '合同审批 - 审批流程')
+        self.assertEqual(self._latest_create_outbox_title(instance), f'合同审批 - contract #{self.contract.id}')
 
     @patch('approval.services.todo.send_todo_task_result')
     def test_process_create_outbox_success_updates_task_status(self, mocked_send):
