@@ -50,24 +50,31 @@ def _cache_app_token(kind, token, expires_in):
 
 
 def _fetch_openapi_app_token():
-    corp_id = _require_setting('CORP_ID')
     client_id = _require_setting('CLIENT_ID')
     client_secret = _require_setting('CLIENT_SECRET')
-    token_url = f'https://api.dingtalk.com/v1.0/oauth2/{corp_id}/token'
+    token_url = 'https://api.dingtalk.com/v1.0/oauth2/accessToken'
     resp = requests.post(
         token_url,
         json={
-            'client_id': client_id,
-            'client_secret': client_secret,
-            'grant_type': 'client_credentials',
+            'appKey': client_id,
+            'appSecret': client_secret,
         },
         timeout=10,
     )
-    resp.raise_for_status()
     payload = resp.json()
+    if not resp.ok:
+        code = payload.get('code') if isinstance(payload, dict) else ''
+        message = payload.get('message') if isinstance(payload, dict) else ''
+        raise RuntimeError(
+            f"Failed to obtain app access token from DingTalk OpenAPI: code={code or resp.status_code} message={message}"
+        )
     token = _extract_access_token(payload)
     if not token:
-        raise RuntimeError('Failed to obtain app access token from DingTalk OpenAPI')
+        code = payload.get('code') if isinstance(payload, dict) else ''
+        message = payload.get('message') if isinstance(payload, dict) else ''
+        raise RuntimeError(
+            f"Failed to obtain app access token from DingTalk OpenAPI: code={code or 'unknown'} message={message}"
+        )
     expires_in = payload.get('expires_in') or payload.get('expireIn') or 7200
     return token, expires_in
 

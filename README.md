@@ -38,6 +38,12 @@ python manage.py runserver
 - `DINGTALK_OWN_OA_FORM_LABEL`
 - `FRONTEND_BASE_URL`：审批详情页面基地址
 
+Todo v1.0（企业内部应用）token 获取说明：
+
+- OpenAPI token 使用 `POST https://api.dingtalk.com/v1.0/oauth2/accessToken`
+- 请求体为 `{"appKey":"<DINGTALK_CLIENT_ID>","appSecret":"<DINGTALK_CLIENT_SECRET>"}`
+- 该 Todo token 获取路径不依赖 `DINGTALK_CORP_ID`（`CORP_ID` 可保留给其他能力）
+
 ## 钉钉组织同步
 
 ```bash
