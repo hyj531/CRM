@@ -62,9 +62,9 @@ class ApprovalTodoOutboxTests(APITestCase):
             approval_status='pending',
         )
 
-    def _create_flow(self, parallel=False):
+    def _create_flow(self, parallel=False, name='合同审批流'):
         flow = approval_models.ApprovalFlow.objects.create(
-            name='合同审批流',
+            name=name,
             target_type=approval_models.ApprovalFlow.TARGET_CONTRACT,
             region=self.region,
             is_active=True,
@@ -84,6 +84,34 @@ class ApprovalTodoOutboxTests(APITestCase):
                 approver_user=self.approver_a,
             )
         return flow
+
+    def _create_invoice_flow(self, name='开票审批流'):
+        flow = approval_models.ApprovalFlow.objects.create(
+            name=name,
+            target_type=approval_models.ApprovalFlow.TARGET_INVOICE,
+            region=self.region,
+            is_active=True,
+        )
+        approval_models.ApprovalStep.objects.create(
+            flow=flow,
+            order=1,
+            name='开票单人审批',
+            approver_user=self.approver_a,
+        )
+        return flow
+
+    def _latest_create_outbox_title(self, instance):
+        outbox_item = (
+            approval_models.ApprovalTodoOutbox.objects
+            .filter(
+                task__instance=instance,
+                action=approval_models.ApprovalTodoOutbox.ACTION_CREATE,
+            )
+            .order_by('-id')
+            .first()
+        )
+        self.assertIsNotNone(outbox_item)
+        return (outbox_item.payload or {}).get('title')
 
     def _create_pending_task(self):
         content_type = ContentType.objects.get_for_model(core_models.Contract)
@@ -140,6 +168,36 @@ class ApprovalTodoOutboxTests(APITestCase):
             ).count(),
             1,
         )
+
+    def test_contract_todo_title_uses_target_and_flow_name(self):
+        self._create_flow(parallel=False, name='华东合同流程')
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract, self.owner)
+
+        self.assertEqual(self._latest_create_outbox_title(instance), '合同审批 - 华东合同流程')
+
+    def test_invoice_todo_title_uses_target_and_flow_name(self):
+        self._create_invoice_flow(name='华东开票流程')
+        invoice = core_models.Invoice.objects.create(
+            contract=self.contract,
+            account=self.account,
+            amount='300.00',
+            region=self.region,
+            owner=self.owner,
+            approval_status='pending',
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(invoice, self.owner)
+
+        self.assertEqual(self._latest_create_outbox_title(instance), '开票审批 - 华东开票流程')
+
+    def test_todo_title_falls_back_to_default_flow_name(self):
+        self._create_flow(parallel=False, name='')
+        with self.captureOnCommitCallbacks(execute=True):
+            instance = engine.start_approval(self.contract, self.owner)
+
+        self.assertEqual(self._latest_create_outbox_title(instance), '合同审批 - 审批流程')
 
     @patch('approval.services.todo.send_todo_task_result')
     def test_process_create_outbox_success_updates_task_status(self, mocked_send):

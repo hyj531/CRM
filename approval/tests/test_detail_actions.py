@@ -98,6 +98,32 @@ class ApprovalDetailActionsTests(APITestCase):
         self.assertIn('tasks', response.data)
         self.assertIn('logs', response.data)
 
+    def test_task_detail_includes_contract_remark_field(self):
+        self.contract.remark = '第一行备注\n第二行备注'
+        self.contract.save(update_fields=['remark'])
+
+        self.client.force_authenticate(user=self.approver)
+        response = self.client.get(f'/api/approval-tasks/{self.task.id}/detail/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        fields = response.data.get('target', {}).get('fields', [])
+        remark_field = next((item for item in fields if item.get('label') == '备注'), None)
+        self.assertIsNotNone(remark_field)
+        self.assertEqual(remark_field.get('value'), '第一行备注\n第二行备注')
+
+    def test_instance_detail_returns_dash_for_empty_contract_remark(self):
+        self.contract.remark = ''
+        self.contract.save(update_fields=['remark'])
+
+        self.client.force_authenticate(user=self.owner)
+        response = self.client.get(f'/api/approval-instances/{self.instance.id}/detail/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        fields = response.data.get('target', {}).get('fields', [])
+        remark_field = next((item for item in fields if item.get('label') == '备注'), None)
+        self.assertIsNotNone(remark_field)
+        self.assertEqual(remark_field.get('value'), '-')
+
     def test_decision_endpoint_still_works_after_detail_action_rename(self):
         self.client.force_authenticate(user=self.approver)
         response = self.client.post(

@@ -26,10 +26,14 @@
         <div v-if="instance" class="card">
           <div class="section-title">审批信息</div>
           <div class="approval-grid">
-            <div v-for="item in targetFields" :key="item.label" class="approval-field">
+            <div v-for="item in targetFieldsForGrid" :key="item.label" class="approval-field">
               <label>{{ item.label }}</label>
-              <div class="field-value">{{ formatValue(item.value) }}</div>
+              <div class="field-value">{{ formatTargetFieldValue(item.value) }}</div>
             </div>
+          </div>
+          <div v-if="hasTargetRemark" class="approval-remark">
+            <label>{{ targetRemarkField?.label || '备注' }}</label>
+            <div class="field-value field-value-remark">{{ formatTargetFieldValue(targetRemarkField?.value) }}</div>
           </div>
         </div>
 
@@ -229,6 +233,13 @@ const instance = computed(() => detail.value?.instance || null)
 const target = computed(() => detail.value?.target || {})
 const targetTitle = computed(() => target.value?.title || '')
 const targetFields = computed(() => target.value?.fields || [])
+const targetRemarkField = computed(() => (
+  targetFields.value.find((item) => item?.label === '备注') || null
+))
+const targetFieldsForGrid = computed(() => (
+  targetFields.value.filter((item) => item?.label !== '备注')
+))
+const hasTargetRemark = computed(() => Boolean(targetRemarkField.value))
 const attachments = computed(() => target.value?.attachments || [])
 const tasks = computed(() => detail.value?.tasks || [])
 const logs = computed(() => detail.value?.logs || [])
@@ -400,6 +411,15 @@ const actionLabel = (value) => {
 const formatValue = (value) => {
   if (value === null || value === undefined || value === '') return '-'
   return String(value).replace('T', ' ').slice(0, 19)
+}
+
+const formatTargetFieldValue = (value) => {
+  if (value === null || value === undefined || value === '') return '-'
+  const text = String(value)
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(text)) {
+    return text.replace('T', ' ').slice(0, 19)
+  }
+  return text
 }
 
 const stepStatusLabel = (value) => {
@@ -911,12 +931,28 @@ onMounted(() => {
   margin-bottom: 4px;
 }
 
+.approval-remark {
+  margin-top: 12px;
+}
+
+.approval-remark label {
+  font-size: 12px;
+  color: var(--cockpit-muted);
+  display: block;
+  margin-bottom: 4px;
+}
+
 .field-value {
   border: 1px solid var(--cockpit-line);
   border-radius: 8px;
   padding: 9px 10px;
   background: var(--cockpit-soft);
   font-size: 13px;
+}
+
+.field-value-remark {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .attachment-list {

@@ -19,6 +19,7 @@ class ContractApprovalAdapter(BaseApprovalAdapter):
             {'label': '签署日期', 'value': obj.signed_at or '-'},
             {'label': '负责人', 'value': obj.owner.username if obj.owner else ''},
             {'label': '区域', 'value': obj.region.name if obj.region else ''},
+            {'label': '备注', 'value': obj.remark or '-'},
         ]
 
     def get_title(self, obj):

@@ -150,10 +150,36 @@ def _is_admin_user(user):
     return bool(user and (user.is_superuser or user.is_staff))
 
 
+def _build_todo_title(task, instance):
+    target_type_label = {
+        models.ApprovalFlow.TARGET_CONTRACT: '合同审批',
+        models.ApprovalFlow.TARGET_INVOICE: '开票审批',
+    }.get(instance.target_type, '审批')
+
+    flow_name = ''
+    step = getattr(task, 'step', None)
+    if step:
+        flow = getattr(step, 'flow', None)
+        flow_name = (getattr(flow, 'name', '') or '').strip()
+
+    if not flow_name and getattr(task, 'step_id', None):
+        flow_name = (
+            models.ApprovalStep.objects
+            .filter(id=task.step_id)
+            .values_list('flow__name', flat=True)
+            .first() or ''
+        ).strip()
+
+    if not flow_name:
+        flow_name = '审批流程'
+
+    return f'{target_type_label} - {flow_name}'
+
+
 def _schedule_task_create_todo(task, instance):
     todo.schedule_create_for_task(
         task=task,
-        title='审批待办提醒',
+        title=_build_todo_title(task, instance),
         content=f'请审批 {instance.target_type} #{instance.object_id}',
         url=todo.build_task_url(task.id),
         originator=instance.started_by,
