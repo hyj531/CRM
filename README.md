@@ -44,6 +44,8 @@ Todo v1.0（企业内部应用）token 获取说明：
 - OpenAPI token 使用 `POST https://api.dingtalk.com/v1.0/oauth2/accessToken`
 - 请求体为 `{"appKey":"<DINGTALK_CLIENT_ID>","appSecret":"<DINGTALK_CLIENT_SECRET>"}`
 - 该 Todo token 获取路径不依赖 `DINGTALK_CORP_ID`（`CORP_ID` 可保留给其他能力）
+- 钉钉待办点击免登录（authCode）依赖：`DINGTALK_CLIENT_ID`、`DINGTALK_CLIENT_SECRET`、`DINGTALK_CORP_ID`、`DINGTALK_TOKEN_URL`、`DINGTALK_USERINFO_URL`
+- 仅带 `sso=1` 的待办链接触发自动免登录；若不在钉钉容器内会自动回退账号密码登录
 
 ## 钉钉组织同步
 

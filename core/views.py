@@ -7,6 +7,7 @@ import mimetypes
 import os
 from urllib.parse import quote as urlquote
 
+from django.conf import settings
 from django.http import FileResponse, HttpResponse
 from django.contrib.auth import password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -116,6 +117,28 @@ class DingTalkSSOView(APIView):
 
         refresh = RefreshToken.for_user(user)
         return Response({'refresh': str(refresh), 'access': str(refresh.access_token)})
+
+
+def _is_dingtalk_sso_enabled():
+    config = getattr(settings, 'DINGTALK', {}) or {}
+    required_keys = (
+        'CLIENT_ID',
+        'CLIENT_SECRET',
+        'CORP_ID',
+        'TOKEN_URL',
+        'USERINFO_URL',
+    )
+    return all(str(config.get(key, '')).strip() for key in required_keys)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def dingtalk_auth_config(request):
+    config = getattr(settings, 'DINGTALK', {}) or {}
+    return Response({
+        'enabled': _is_dingtalk_sso_enabled(),
+        'corp_id': config.get('CORP_ID', ''),
+    })
 
 
 class AdminManagePermission(permissions.BasePermission):

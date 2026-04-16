@@ -55,12 +55,26 @@ const router = createRouter({
   routes
 })
 
+const resolveSafeRedirect = (value) => {
+  if (typeof value !== 'string') return ''
+  if (!value.startsWith('/')) return ''
+  if (value.startsWith('//')) return ''
+  return value
+}
+
 router.beforeEach((to) => {
   const auth = useAuthStore()
   if (to.name !== 'login' && !auth.accessToken) {
-    return { name: 'login' }
+    return {
+      name: 'login',
+      query: { redirect: to.fullPath },
+    }
   }
   if (to.name === 'login' && auth.accessToken) {
+    const redirectPath = resolveSafeRedirect(to.query.redirect)
+    if (redirectPath) {
+      return redirectPath
+    }
     return { name: 'dashboard' }
   }
 })

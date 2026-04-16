@@ -9,12 +9,20 @@ export const useAuthStore = defineStore('auth', {
     userFetchedAt: 0
   }),
   actions: {
-    async login(username, password) {
-      const response = await api.post('/auth/jwt/', { username, password })
-      this.accessToken = response.data.access
-      this.refreshToken = response.data.refresh
+    setTokens(access, refresh) {
+      this.accessToken = access || ''
+      this.refreshToken = refresh || ''
       localStorage.setItem('accessToken', this.accessToken)
       localStorage.setItem('refreshToken', this.refreshToken)
+    },
+    async login(username, password) {
+      const response = await api.post('/auth/jwt/', { username, password })
+      this.setTokens(response.data.access, response.data.refresh)
+      await this.fetchMe()
+    },
+    async loginWithDingTalkCode(code) {
+      const response = await api.post('/auth/dingtalk/', { code })
+      this.setTokens(response.data.access, response.data.refresh)
       await this.fetchMe()
     },
     async fetchMe() {

@@ -61,7 +61,7 @@ def build_todo_source_id(task_id):
 
 def build_task_url(task_id):
     base = _get_frontend_base_url().rstrip('/')
-    return f"{base}/approvals/tasks/{task_id}"
+    return f"{base}/approvals/tasks/{task_id}?from=approvals&sso=1"
 
 
 def _format_url(template, user_id=None, union_id=None, operator_union_id=None, task_id=None):

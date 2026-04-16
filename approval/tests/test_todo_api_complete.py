@@ -15,6 +15,11 @@ class TodoApiCompleteTests(SimpleTestCase):
             dingtalk_user_id=user_id,
         )
 
+    @override_settings(FRONTEND_BASE_URL='https://crm.example.com/app')
+    def test_build_task_url_includes_sso_marker(self):
+        url = todo.build_task_url(123)
+        self.assertEqual(url, 'https://crm.example.com/app/approvals/tasks/123?from=approvals&sso=1')
+
     @override_settings(
         DINGTALK={
             'TODO_ENABLED': '1',
