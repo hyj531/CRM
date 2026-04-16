@@ -37,6 +37,10 @@ def _is_todo_enabled():
     return str(_get_setting('TODO_ENABLED', '')).lower() in ('1', 'true', 'yes')
 
 
+def _is_todo_retry_enabled():
+    return str(_get_setting('TODO_RETRY_ENABLED', '0')).lower() in ('1', 'true', 'yes')
+
+
 def _resolve_channel():
     if not _is_todo_enabled():
         return models.ApprovalTask.TODO_CHANNEL_DISABLED
@@ -413,11 +417,14 @@ def _next_retry_at(retry_count):
 
 def process_outbox(batch_size=100):
     now = timezone.now()
+    status_filters = [models.ApprovalTodoOutbox.STATUS_PENDING]
+    if _is_todo_retry_enabled():
+        status_filters.append(models.ApprovalTodoOutbox.STATUS_FAILED)
     candidates = list(
         models.ApprovalTodoOutbox.objects
         .select_related('task', 'task__assignee', 'task__instance', 'task__instance__started_by')
         .filter(
-            status__in=[models.ApprovalTodoOutbox.STATUS_PENDING, models.ApprovalTodoOutbox.STATUS_FAILED],
+            status__in=status_filters,
             next_retry_at__lte=now,
         )
         .order_by('id')[:batch_size]
@@ -519,13 +526,14 @@ def _mark_success(item, task, result):
 
 def _mark_failure(item, task, error):
     retry_count = item.retry_count + 1
-    retry_at = _next_retry_at(retry_count)
-    if retry_at is None:
-        item.status = models.ApprovalTodoOutbox.STATUS_DEAD
-        next_retry_at = timezone.now()
-    else:
+    retry_enabled = _is_todo_retry_enabled()
+    retry_at = _next_retry_at(retry_count) if retry_enabled else None
+    if retry_enabled and retry_at is not None:
         item.status = models.ApprovalTodoOutbox.STATUS_FAILED
         next_retry_at = retry_at
+    else:
+        item.status = models.ApprovalTodoOutbox.STATUS_DEAD
+        next_retry_at = timezone.now()
     item.retry_count = retry_count
     item.last_error = error[:2000]
     item.next_retry_at = next_retry_at
@@ -549,6 +557,7 @@ def _mark_failure(item, task, error):
             'outbox_id': item.id,
             'outbox_action': item.action,
             'retry_count': retry_count,
+            'retry_enabled': retry_enabled,
             'next_retry_at': next_retry_at.isoformat() if next_retry_at else '',
             'is_dead': item.status == models.ApprovalTodoOutbox.STATUS_DEAD,
         },

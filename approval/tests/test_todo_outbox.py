@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.contenttypes.models import ContentType
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
@@ -380,6 +381,7 @@ class ApprovalTodoOutboxTests(APITestCase):
         self.assertEqual(instance.current_step, 3)
 
     @patch('approval.services.todo.send_todo_task_result')
+    @override_settings(DINGTALK={'TODO_RETRY_ENABLED': '1'})
     def test_outbox_failure_retries_then_dead_letter(self, mocked_send):
         mocked_send.return_value = todo.TodoGatewayResult(
             ok=False,
@@ -402,3 +404,46 @@ class ApprovalTodoOutboxTests(APITestCase):
         self.assertEqual(outbox_item.status, approval_models.ApprovalTodoOutbox.STATUS_DEAD)
         self.assertEqual(task.todo_status, approval_models.ApprovalTask.TODO_STATUS_FAILED)
         self.assertGreaterEqual(task.todo_retry_count, len(todo.RETRY_DELAYS_SECONDS))
+
+    @patch('approval.services.todo.send_todo_task_result')
+    @override_settings(DINGTALK={'TODO_RETRY_ENABLED': '0'})
+    def test_outbox_failure_no_retry_goes_dead_immediately(self, mocked_send):
+        mocked_send.return_value = todo.TodoGatewayResult(
+            ok=False,
+            channel=approval_models.ApprovalTask.TODO_CHANNEL_TODO_API,
+            task_id='',
+            error='network timeout',
+            raw={},
+        )
+        _, task = self._create_pending_task()
+        with self.captureOnCommitCallbacks(execute=True):
+            todo.schedule_create_for_task(task, originator=self.owner)
+
+        summary = todo.process_outbox(batch_size=10)
+
+        outbox_item = approval_models.ApprovalTodoOutbox.objects.filter(task=task).first()
+        task.refresh_from_db()
+        self.assertEqual(summary['dead'], 1)
+        self.assertEqual(outbox_item.status, approval_models.ApprovalTodoOutbox.STATUS_DEAD)
+        self.assertEqual(task.todo_status, approval_models.ApprovalTask.TODO_STATUS_FAILED)
+        self.assertEqual(task.todo_retry_count, 1)
+        self.assertIsNone(task.todo_next_retry_at)
+
+    @override_settings(DINGTALK={'TODO_RETRY_ENABLED': '0'})
+    def test_process_outbox_skips_failed_items_when_retry_disabled(self):
+        _, task = self._create_pending_task()
+        item = approval_models.ApprovalTodoOutbox.objects.create(
+            task=task,
+            action=approval_models.ApprovalTodoOutbox.ACTION_CREATE,
+            source_id=todo.build_todo_source_id(task.id),
+            payload={},
+            status=approval_models.ApprovalTodoOutbox.STATUS_FAILED,
+            next_retry_at=timezone.now(),
+            retry_count=2,
+        )
+
+        summary = todo.process_outbox(batch_size=10)
+
+        item.refresh_from_db()
+        self.assertEqual(summary['processed'], 0)
+        self.assertEqual(item.status, approval_models.ApprovalTodoOutbox.STATUS_FAILED)
