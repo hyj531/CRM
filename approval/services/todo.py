@@ -83,18 +83,45 @@ def _format_url(template, user_id=None, union_id=None, operator_union_id=None, t
     return template
 
 
-def _send_request(url, payload):
+def _template_has_user_id(template):
+    if not template:
+        return False
+    return any(key in template for key in ('{userId}', '{userid}', '{user_id}'))
+
+
+def _template_has_task_id(template):
+    if not template:
+        return False
+    return any(key in template for key in ('{taskId}', '{taskid}', '{task_id}'))
+
+
+def _has_unresolved_placeholder(value):
+    return bool(value) and ('{' in value and '}' in value)
+
+
+def _send_request(url, payload, method='post'):
     access_token = dingtalk_client._get_app_access_token_for_url(url)
     if not access_token:
         raise RuntimeError('DingTalk access token unavailable')
 
+    method = (method or 'post').lower()
     if dingtalk_client._is_openapi_url(url):
         headers = {'x-acs-dingtalk-access-token': access_token}
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        if method == 'put':
+            response = requests.put(url, json=payload, headers=headers, timeout=10)
+        else:
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
     else:
+        if method != 'post':
+            raise RuntimeError(f'Unsupported DingTalk OAPI method: {method}')
         response = requests.post(url, params={'access_token': access_token}, json=payload, timeout=10)
     response.raise_for_status()
-    return response.json()
+    if not response.content:
+        return {}
+    try:
+        return response.json()
+    except ValueError:
+        return {}
 
 
 def _extract_task_id(payload):
@@ -130,8 +157,8 @@ def send_todo_task_result(user, title, content, url=None, source_id=None, origin
             source_id=source_id,
         )
 
-    create_url = _get_setting('TODO_CREATE_URL')
-    if not create_url:
+    create_url_template = _get_setting('TODO_CREATE_URL')
+    if not create_url_template:
         return TodoGatewayResult(ok=False, channel=channel, error='DingTalk todo create url not configured')
 
     user_id = getattr(user, 'dingtalk_user_id', None) or getattr(user, 'dingtalk_user', None)
@@ -141,22 +168,31 @@ def send_todo_task_result(user, title, content, url=None, source_id=None, origin
         return TodoGatewayResult(ok=False, channel=channel, error='User missing DingTalk identity')
 
     create_url = _format_url(
-        create_url,
+        create_url_template,
         user_id=user_id,
         union_id=union_id,
         operator_union_id=operator_union_id,
     )
+    if _has_unresolved_placeholder(create_url):
+        return TodoGatewayResult(
+            ok=False,
+            channel=channel,
+            error='DingTalk todo create url contains unresolved placeholders',
+        )
     task_url = url or ''
+    is_openapi_create = dingtalk_client._is_openapi_url(create_url)
     payload = {
         'sourceId': source_id or f'approval-task-{user_id}-{title}',
         'subject': title,
         'description': content,
         'detailUrl': {
             'pcUrl': task_url,
-            'mobileUrl': task_url,
+            'appUrl': task_url,
         },
     }
-    if '{userId}' not in create_url and '{userid}' not in create_url and '{user_id}' not in create_url:
+    if is_openapi_create and union_id:
+        payload['executorIds'] = [str(union_id)]
+    if user_id and not _template_has_user_id(create_url_template) and not is_openapi_create:
         payload['executorId'] = str(user_id)
 
     try:
@@ -208,8 +244,8 @@ def complete_todo_task_result(user, source_id=None, task_id=None, channel=''):
     if resolved_channel == models.ApprovalTask.TODO_CHANNEL_DISABLED:
         return TodoGatewayResult(ok=True, channel=resolved_channel, raw={'skipped': True})
 
-    complete_url = _get_setting('TODO_COMPLETE_URL')
-    if not complete_url:
+    complete_url_template = _get_setting('TODO_COMPLETE_URL')
+    if not complete_url_template:
         if resolved_channel == models.ApprovalTask.TODO_CHANNEL_OWN_OA:
             return TodoGatewayResult(ok=True, channel=resolved_channel, raw={'skipped': True})
         return TodoGatewayResult(ok=False, channel=resolved_channel, error='DingTalk todo complete url not configured')
@@ -220,20 +256,51 @@ def complete_todo_task_result(user, source_id=None, task_id=None, channel=''):
     if not user_id and not union_id:
         return TodoGatewayResult(ok=False, channel=resolved_channel, error='User missing DingTalk identity')
 
+    resolved_task_id = task_id or ''
+    if _template_has_task_id(complete_url_template) and not resolved_task_id:
+        return TodoGatewayResult(
+            ok=True,
+            channel=resolved_channel,
+            raw={'skipped': True, 'reason': 'missing_task_id'},
+        )
+
     complete_url = _format_url(
-        complete_url,
+        complete_url_template,
         user_id=user_id,
         union_id=union_id,
         operator_union_id=operator_union_id,
-        task_id=task_id,
+        task_id=resolved_task_id,
     )
-    payload = {'sourceId': source_id}
-    if '{userId}' not in complete_url and '{userid}' not in complete_url and '{user_id}' not in complete_url:
+    if _has_unresolved_placeholder(complete_url):
+        return TodoGatewayResult(
+            ok=False,
+            channel=resolved_channel,
+            error='DingTalk todo complete url contains unresolved placeholders',
+        )
+    if dingtalk_client._is_openapi_url(complete_url):
+        payload = {'done': True}
+        if union_id:
+            payload['executorIds'] = [str(union_id)]
+        request_method = 'put'
+    else:
+        payload = {'sourceId': source_id}
+        request_method = 'post'
+    if user_id and not _template_has_user_id(complete_url_template) and not dingtalk_client._is_openapi_url(complete_url):
         payload['executorId'] = str(user_id)
 
     try:
-        raw = _send_request(complete_url, payload)
-        return TodoGatewayResult(ok=True, channel=resolved_channel, task_id=task_id or _extract_task_id(raw), raw=raw)
+        raw = _send_request(complete_url, payload, method=request_method)
+        return TodoGatewayResult(ok=True, channel=resolved_channel, task_id=resolved_task_id or _extract_task_id(raw), raw=raw)
+    except requests.HTTPError as exc:
+        status_code = getattr(getattr(exc, 'response', None), 'status_code', None)
+        if dingtalk_client._is_openapi_url(complete_url) and status_code == 404:
+            return TodoGatewayResult(
+                ok=True,
+                channel=resolved_channel,
+                task_id=resolved_task_id,
+                raw={'skipped': True, 'reason': 'remote_task_not_found'},
+            )
+        return TodoGatewayResult(ok=False, channel=resolved_channel, error=str(exc))
     except Exception as exc:
         return TodoGatewayResult(ok=False, channel=resolved_channel, error=str(exc))
 
