@@ -456,7 +456,7 @@
               <tr v-for="item in invoices" :key="item.id">
                 <td>{{ item.invoice_no || '-' }}</td>
                 <td>{{ item.amount }}</td>
-                <td>{{ item.issued_at || '-' }}</td>
+                <td>{{ formatDate(item.issued_at) }}</td>
                 <td>{{ item.tax_rate ?? '-' }}</td>
                 <td>{{ invoiceTypeLabel(item.invoice_type) }}</td>
                 <td>{{ invoiceStatusLabel(item.status) }}</td>
@@ -469,7 +469,7 @@
                 <td>{{ item.billing_bank_account || '-' }}</td>
                 <td>{{ item.region_name || item.region || '-' }}</td>
                 <td>{{ item.owner_name || item.owner || '-' }}</td>
-                <td>{{ item.created_at || '-' }}</td>
+                <td>{{ formatDate(item.created_at) }}</td>
                 <td>
                   <router-link class="link-button" :to="`/invoices/${item.id}`">详情</router-link>
                   <button class="button secondary" @click="startEditInvoice(item)">编辑</button>
@@ -700,7 +700,7 @@ const invoiceForm = ref({
   amount: null,
   issued_at: '',
   tax_rate: null,
-  invoice_type: 'normal',
+  invoice_type: 'special',
   status: 'draft',
   region: null,
   owner: null
@@ -1053,7 +1053,7 @@ const resetInvoiceForm = () => {
     amount: null,
     issued_at: '',
     tax_rate: null,
-    invoice_type: 'normal',
+    invoice_type: 'special',
     status: 'draft',
     region: form.value.region != null ? Number(form.value.region) : null,
     owner: form.value.owner != null ? Number(form.value.owner) : null
@@ -1538,7 +1538,7 @@ const buildInvoicePayload = () => ({
   amount: Number(invoiceForm.value.amount),
   issued_at: invoiceForm.value.issued_at || null,
   tax_rate: invoiceForm.value.tax_rate === '' ? null : invoiceForm.value.tax_rate,
-  invoice_type: invoiceForm.value.invoice_type || 'normal',
+  invoice_type: invoiceForm.value.invoice_type || 'special',
   status: invoiceForm.value.status || 'draft',
   region: Number(invoiceForm.value.region),
   owner: Number(invoiceForm.value.owner)

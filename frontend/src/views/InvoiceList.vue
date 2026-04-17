@@ -103,7 +103,11 @@
             <tr v-for="(item, index) in pagedInvoices" :key="item.id">
               <td>{{ rowNo(index) }}</td>
               <td>{{ item.invoice_no || '-' }}</td>
-              <td>{{ contractDisplayName(item.contract) }}</td>
+              <td>
+                <router-link class="link-button" :to="`/invoices/${item.id}`">
+                  {{ contractDisplayName(item.contract) }}
+                </router-link>
+              </td>
               <td>{{ accountName(item.account) }}</td>
               <td>{{ item.amount }}</td>
               <td>{{ item.tax_rate ?? '-' }}</td>
@@ -369,6 +373,11 @@ watch([statusFilter, approvalFilter, ordering], () => {
 </script>
 
 <style scoped>
+.table.payment-table th:nth-child(2),
+.table.payment-table td:nth-child(2) {
+  min-width: 150px;
+}
+
 .filter-range {
   display: flex;
   align-items: center;

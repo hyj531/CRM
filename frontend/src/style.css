@@ -790,6 +790,24 @@ a {
   min-width: 140px;
 }
 
+.opportunity-table th:nth-child(1),
+.opportunity-table td:nth-child(1),
+.account-table th:nth-child(1),
+.account-table td:nth-child(1),
+.contract-table th:nth-child(1),
+.contract-table td:nth-child(1),
+.contract-receivable-table th:nth-child(1),
+.contract-receivable-table td:nth-child(1),
+.payment-table th:nth-child(1),
+.payment-table td:nth-child(1) {
+  width: 3em;
+  min-width: 3em;
+  max-width: 3em;
+  text-align: center;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
 .filter-bar {
   display: flex;
   gap: 10px;

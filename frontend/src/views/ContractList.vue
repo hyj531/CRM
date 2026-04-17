@@ -595,7 +595,7 @@ watch(accountSearch, (val) => {
 }
 
 .contract-table-wrap {
-  --sticky-no-width: 64px;
+  --sticky-no-width: 3em;
   --sticky-name-width: 15em;
 }
 
@@ -607,6 +607,10 @@ watch(accountSearch, (val) => {
   left: 0;
   z-index: 4;
   background: #fff;
+  width: var(--sticky-no-width);
+  min-width: var(--sticky-no-width);
+  max-width: var(--sticky-no-width);
+  text-align: center;
 }
 
 .contract-table thead th:nth-child(1),

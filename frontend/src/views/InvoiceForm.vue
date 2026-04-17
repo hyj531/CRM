@@ -221,7 +221,7 @@ const form = ref({
   owner: null,
   amount: null,
   tax_rate: null,
-  invoice_type: 'normal',
+  invoice_type: 'special',
   status: 'draft',
   approval_status: 'pending',
   issued_at: ''
@@ -525,7 +525,7 @@ const saveInvoice = async () => {
       billing_bank_account: form.value.billing_bank_account || '',
       amount: Number(form.value.amount),
       tax_rate: form.value.tax_rate === '' ? null : form.value.tax_rate,
-      invoice_type: form.value.invoice_type,
+      invoice_type: form.value.invoice_type || 'special',
       status: form.value.status || 'draft',
       region: Number(form.value.region),
       owner: Number(form.value.owner),
