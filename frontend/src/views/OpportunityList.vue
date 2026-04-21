@@ -25,7 +25,7 @@
 
     <div class="tabs">
       <button class="tab" :class="{ active: !filters.stage }" @click="setStage('')">
-        全部 ({{ baseSummaryTotalCount }})
+        全部 ({{ stageSummaryTotalCount }})
       </button>
       <button
         v-for="s in stages"
@@ -34,7 +34,7 @@
         :class="{ active: filters.stage === s.value }"
         @click="setStage(s.value)"
       >
-        {{ s.label }} ({{ baseSummaryStageCount(s.value) }})
+        {{ s.label }} ({{ stageSummaryStageCount(s.value) }})
       </button>
     </div>
 
@@ -182,7 +182,7 @@ import api from '../api'
 
 const opportunities = ref([])
 const total = ref(0)
-const baseSummary = ref({
+const stageSummary = ref({
   total_count: 0,
   total_amount: '0.00',
   weighted_total: '0.00',
@@ -323,8 +323,50 @@ const buildParams = () => {
   return params
 }
 
+const buildSummaryParams = ({ excludeStage = false } = {}) => {
+  const params = {}
+  if (search.value) params.search = search.value
+  if (!excludeStage && filters.value.stage) params.stage = filters.value.stage
+  if (filters.value.opportunity_category) params.opportunity_category = filters.value.opportunity_category
+  if (filters.value.customer_level) params.customer_level = filters.value.customer_level
+  if (filters.value.region) params.region = filters.value.region
+  if (filters.value.account) params.account = filters.value.account
+  if (filters.value.owner) params.owner = filters.value.owner
+  return params
+}
+
+const emptySummary = () => ({
+  total_count: 0,
+  total_amount: '0.00',
+  weighted_total: '0.00',
+  won_count: 0,
+  lost_count: 0,
+  stage_counts: {}
+})
+
+const fetchCardSummary = async () => {
+  try {
+    const params = buildSummaryParams()
+    const res = await api.get('/opportunities/summary/', { params })
+    cardSummary.value = res.data || emptySummary()
+  } catch (err) {
+    cardSummary.value = emptySummary()
+  }
+}
+
+const fetchStageSummary = async () => {
+  try {
+    const params = buildSummaryParams({ excludeStage: true })
+    const res = await api.get('/opportunities/summary/', { params })
+    stageSummary.value = res.data || emptySummary()
+  } catch (err) {
+    stageSummary.value = emptySummary()
+  }
+}
+
 const fetchData = async () => {
   error.value = ''
+  await Promise.all([fetchCardSummary(), fetchStageSummary()])
   const params = buildParams()
   try {
     const res = await api.get('/opportunities/', { params })
@@ -347,35 +389,6 @@ const fetchData = async () => {
   }
 }
 
-const emptySummary = () => ({
-  total_count: 0,
-  total_amount: '0.00',
-  weighted_total: '0.00',
-  won_count: 0,
-  lost_count: 0,
-  stage_counts: {}
-})
-
-const fetchBaseSummary = async () => {
-  try {
-    const res = await api.get('/opportunities/summary/')
-    baseSummary.value = res.data || emptySummary()
-  } catch (err) {
-    baseSummary.value = emptySummary()
-  }
-}
-
-const fetchCardSummary = async () => {
-  try {
-    const params = {}
-    if (filters.value.stage) params.stage = filters.value.stage
-    const res = await api.get('/opportunities/summary/', { params })
-    cardSummary.value = res.data || emptySummary()
-  } catch (err) {
-    cardSummary.value = emptySummary()
-  }
-}
-
 const totalCount = computed(() => total.value)
 const cardSummaryTotalCount = computed(() => Number(cardSummary.value.total_count || 0))
 const cardSummaryTotalAmount = computed(() => {
@@ -391,8 +404,8 @@ const cardSummaryWeightedAmount = computed(() => {
 const cardSummaryWonCount = computed(() => Number(cardSummary.value.won_count || 0))
 const cardSummaryLostCount = computed(() => Number(cardSummary.value.lost_count || 0))
 
-const baseSummaryTotalCount = computed(() => Number(baseSummary.value.total_count || 0))
-const baseSummaryStageCount = (stageValue) => Number(baseSummary.value.stage_counts?.[stageValue] || 0)
+const stageSummaryTotalCount = computed(() => Number(stageSummary.value.total_count || 0))
+const stageSummaryStageCount = (stageValue) => Number(stageSummary.value.stage_counts?.[stageValue] || 0)
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const pagedOpportunities = computed(() => {
@@ -403,7 +416,6 @@ const rowNo = (index) => ((currentPage.value - 1) * pageSize.value) + index + 1
 const setStage = (value) => {
   filters.value.stage = value
   applyFilters()
-  fetchCardSummary()
 }
 
 const goCreate = () => {
@@ -450,7 +462,6 @@ const resetFilters = () => {
   search.value = ''
   filters.value = { stage: '', opportunity_category: '', customer_level: '', region: '', account: '', owner: '' }
   applyFilters()
-  fetchCardSummary()
 }
 
 const applyFilters = () => {
@@ -488,8 +499,6 @@ const deleteOpportunity = async (id) => {
   try {
     await api.delete(`/opportunities/${id}/`)
     await fetchData()
-    await fetchBaseSummary()
-    await fetchCardSummary()
   } catch (err) {
     const status = err.response?.status
     if (status === 403) {
@@ -510,8 +519,6 @@ onMounted(async () => {
   await fetchRegions()
   await fetchAccounts()
   await fetchUsers()
-  await fetchBaseSummary()
-  await fetchCardSummary()
   await fetchData()
 })
 

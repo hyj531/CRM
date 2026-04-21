@@ -382,11 +382,7 @@ class OpportunityViewSet(RegionScopedViewSet):
         from django.db.models import DecimalField, Sum, Value, Count, F, ExpressionWrapper
         from django.db.models.functions import Coalesce, Cast, Greatest, Least
 
-        queryset = scoping.apply_scope(models.Opportunity.objects.all(), request.user)
-        stage = (request.query_params.get('stage') or '').strip()
-        valid_stages = {value for value, _ in models.Opportunity.STAGES}
-        if stage and stage in valid_stages:
-            queryset = queryset.filter(stage=stage)
+        queryset = self.filter_queryset(self.get_queryset())
 
         totals = queryset.aggregate(
             total_count=Count('id'),
@@ -634,7 +630,7 @@ class ContractViewSet(RegionScopedViewSet):
         from django.db.models import OuterRef, Subquery
         from django.db.models.functions import Coalesce
 
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().select_related('account', 'vendor_company', 'owner', 'region')
         paid_subquery = models.Payment.objects.filter(contract_id=OuterRef('pk')) \
             .values('contract_id') \
             .annotate(total=Coalesce(
@@ -651,6 +647,104 @@ class ContractViewSet(RegionScopedViewSet):
                 output_field=DecimalField(max_digits=12, decimal_places=2)
             )
         )
+
+    @action(detail=False, methods=['get'])
+    def export(self, request):
+        from decimal import Decimal, ROUND_HALF_UP
+
+        queryset = self.filter_queryset(self.get_queryset())
+        receivable_only = _parse_bool(request.query_params.get('receivable_only'))
+
+        status_map = {
+            'draft': '草稿',
+            'signed': '已签署',
+            'active': '执行中',
+            'closed': '已关闭',
+        }
+        approval_map = {
+            'pending': '待审批',
+            'approved': '已通过',
+            'rejected': '已驳回',
+            'revising': '修订中',
+        }
+
+        def format_date(value):
+            if not value:
+                return '-'
+            if hasattr(value, 'isoformat'):
+                return value.isoformat()[:10]
+            return str(value)[:10]
+
+        def format_money(value):
+            if value is None:
+                return '-'
+            try:
+                dec = Decimal(value)
+            except Exception:
+                return '-'
+            return str(dec.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP))
+
+        def contract_display_name(item):
+            return item.name or item.contract_no or f'合同{item.id}'
+
+        def account_display_name(item):
+            account = getattr(item, 'account', None)
+            if not account:
+                return '-'
+            return account.full_name or account.short_name or '-'
+
+        def vendor_display_name(item):
+            vendor = getattr(item, 'vendor_company', None)
+            return vendor.name if vendor else '-'
+
+        def receivable_display_amount(item):
+            paid_total = getattr(item, 'paid_total', None) or Decimal('0')
+            base = item.current_output if item.current_output is not None else item.amount
+            if base is None:
+                return '-'
+            return format_money(base - paid_total)
+
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="contracts.csv"'
+        response.write('\ufeff')
+        writer = csv.writer(response)
+
+        if receivable_only:
+            writer.writerow(['序号', '合同名称', '客户', '合同金额', '已回款', '应收款', '签署日期', '负责人', '区域'])
+            for index, item in enumerate(queryset, start=1):
+                writer.writerow([
+                    index,
+                    contract_display_name(item),
+                    account_display_name(item),
+                    format_money(item.amount),
+                    format_money(getattr(item, 'paid_total', None)),
+                    receivable_display_amount(item),
+                    format_date(item.signed_at),
+                    item.owner.username if item.owner_id else '-',
+                    item.region.name if item.region_id else '-',
+                ])
+            return response
+
+        writer.writerow([
+            '序号', '合同名称', '合同状态', '审批状态', '甲方', '乙方', '合同金额', '回款', '当前产值', '应收款', '签署日期', '区域', '负责人'
+        ])
+        for index, item in enumerate(queryset, start=1):
+            writer.writerow([
+                index,
+                contract_display_name(item),
+                status_map.get(item.status, item.status or '-'),
+                approval_map.get(item.approval_status, item.approval_status or '-'),
+                account_display_name(item),
+                vendor_display_name(item),
+                format_money(item.amount),
+                format_money(getattr(item, 'paid_total', None)),
+                format_money(item.current_output) if item.current_output is not None else '-',
+                receivable_display_amount(item),
+                format_date(item.signed_at),
+                item.region.name if item.region_id else '-',
+                item.owner.username if item.owner_id else '-',
+            ])
+        return response
 
     @action(detail=False, methods=['get'])
     def summary(self, request):

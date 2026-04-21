@@ -57,8 +57,18 @@ class ApprovalDetailActionsTests(APITestCase):
             region=cls.region,
             owner=cls.owner,
         )
+        cls.vendor_category, _ = core_models.LookupCategory.objects.get_or_create(
+            code='vendor_company',
+            defaults={'name': '乙方公司'},
+        )
+        cls.vendor_option, _ = core_models.LookupOption.objects.get_or_create(
+            category=cls.vendor_category,
+            code='detail_vendor',
+            defaults={'name': '徐师傅科技'},
+        )
         cls.contract = core_models.Contract.objects.create(
             account=cls.account,
+            vendor_company=cls.vendor_option,
             amount='1200.00',
             region=cls.region,
             owner=cls.owner,
@@ -110,6 +120,16 @@ class ApprovalDetailActionsTests(APITestCase):
         remark_field = next((item for item in fields if item.get('label') == '备注'), None)
         self.assertIsNotNone(remark_field)
         self.assertEqual(remark_field.get('value'), '第一行备注\n第二行备注')
+
+    def test_task_detail_includes_contract_vendor_company_field(self):
+        self.client.force_authenticate(user=self.approver)
+        response = self.client.get(f'/api/approval-tasks/{self.task.id}/detail/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        fields = response.data.get('target', {}).get('fields', [])
+        vendor_field = next((item for item in fields if item.get('label') == '乙方公司'), None)
+        self.assertIsNotNone(vendor_field)
+        self.assertEqual(vendor_field.get('value'), '徐师傅科技')
 
     def test_instance_detail_returns_dash_for_empty_contract_remark(self):
         self.contract.remark = ''

@@ -364,6 +364,8 @@ class ContractSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         vendor = attrs.get('vendor_company')
+        if self.instance is None and not vendor:
+            raise serializers.ValidationError({'vendor_company': '乙方公司不能为空'})
         if vendor and vendor.category.code != 'vendor_company':
             raise serializers.ValidationError({'vendor_company': 'Invalid lookup category: vendor_company'})
         framework_contract = attrs.get('framework_contract')

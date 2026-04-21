@@ -157,7 +157,7 @@
           </div>
         </div>
         <div>
-          <label>乙方公司</label>
+          <label>乙方公司<span v-if="!isEdit"> *</span></label>
           <select v-model.number="form.vendor_company" :disabled="contractMainReadonly">
             <option :value="null">请选择乙方公司</option>
             <option v-for="opt in lookupOptions.vendor_company" :key="opt.id" :value="opt.id">
@@ -1742,6 +1742,10 @@ const save = async () => {
   }
   if (!form.value.account) {
     error.value = '请选择关联甲方'
+    return
+  }
+  if (!isEdit.value && !form.value.vendor_company) {
+    error.value = '请选择乙方公司'
     return
   }
   if (!form.value.region) {

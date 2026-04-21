@@ -76,6 +76,12 @@
               {{ region.name || region.code || `ID ${region.id}` }}
             </option>
           </select>
+          <select v-model="filters.owner">
+            <option value="">负责人</option>
+            <option v-for="u in users" :key="u.id" :value="String(u.id)">
+              {{ u.username || u.email || `ID ${u.id}` }}
+            </option>
+          </select>
         </div>
         <div class="filter-line">
           <div class="filter-range">
@@ -269,6 +275,7 @@ const filters = ref({
   account: '',
   vendor_company: '',
   region: '',
+  owner: '',
   signed_at_start: '',
   signed_at_end: '',
   paid_at_start: '',
@@ -278,6 +285,7 @@ const lookupOptions = ref({
   vendor_company: []
 })
 const regions = ref([])
+const users = ref([])
 const accounts = ref([])
 const accountSearch = ref('')
 const showAccountDropdown = ref(false)
@@ -406,6 +414,7 @@ const buildParams = () => {
   if (filters.value.account) params.account = filters.value.account
   if (filters.value.vendor_company) params.vendor_company = filters.value.vendor_company
   if (filters.value.region) params.region = filters.value.region
+  if (filters.value.owner) params.owner = filters.value.owner
   if (filters.value.signed_at_start) params.signed_at_start = filters.value.signed_at_start
   if (filters.value.signed_at_end) params.signed_at_end = filters.value.signed_at_end
   if (filters.value.paid_at_start) params.paid_at_start = filters.value.paid_at_start
@@ -460,6 +469,11 @@ const fetchRegions = async () => {
   regions.value = Array.isArray(res.data?.results) ? res.data.results : res.data
 }
 
+const fetchUsers = async () => {
+  const res = await api.get('/users/', { params: { page: 1, page_size: 200, ordering: 'username' } })
+  users.value = Array.isArray(res.data?.results) ? res.data.results : res.data
+}
+
 const fetchAccounts = async () => {
   const res = await api.get('/accounts/', { params: { page: 1, page_size: 1000 } })
   accounts.value = Array.isArray(res.data?.results) ? res.data.results : res.data
@@ -497,6 +511,7 @@ const resetFilters = () => {
     account: '',
     vendor_company: '',
     region: '',
+    owner: '',
     signed_at_start: '',
     signed_at_end: '',
     paid_at_start: '',
@@ -574,6 +589,7 @@ const deleteContract = async (id) => {
 onMounted(async () => {
   await fetchLookups()
   await fetchRegions()
+  await fetchUsers()
   await fetchAccounts()
   await fetchData()
 })

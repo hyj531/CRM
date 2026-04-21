@@ -117,8 +117,8 @@
             </div>
           </div>
           <div class="timeline-section-title">流程动作</div>
-          <div v-if="logs.length" class="timeline">
-            <div v-for="log in logs" :key="log.id" class="timeline-item">
+          <div v-if="filteredLogs.length" class="timeline">
+            <div v-for="log in filteredLogs" :key="log.id" class="timeline-item">
               <div class="timeline-dot"></div>
               <div class="timeline-content">
                 <div class="timeline-title">
@@ -243,6 +243,10 @@ const hasTargetRemark = computed(() => Boolean(targetRemarkField.value))
 const attachments = computed(() => target.value?.attachments || [])
 const tasks = computed(() => detail.value?.tasks || [])
 const logs = computed(() => detail.value?.logs || [])
+const ACTION_TIMELINE_WHITELIST = new Set(['submitted', 'approved', 'completed'])
+const filteredLogs = computed(() => (
+  logs.value.filter((log) => ACTION_TIMELINE_WHITELIST.has(log?.action))
+))
 const stepGroups = computed(() => detail.value?.step_groups || [])
 
 const targetTypeLabel = computed(() => {

@@ -12,9 +12,11 @@ class ContractApprovalAdapter(BaseApprovalAdapter):
     def get_display_fields(self, obj):
         account = obj.account
         account_name = account.full_name or account.short_name or getattr(account, 'name', '') or ''
+        vendor_name = obj.vendor_company.name if obj.vendor_company else '-'
         return [
             {'label': '合同名称', 'value': obj.name or obj.contract_no or f'合同{obj.id}'},
             {'label': '客户', 'value': account_name},
+            {'label': '乙方公司', 'value': vendor_name},
             {'label': '合同金额', 'value': obj.amount},
             {'label': '签署日期', 'value': obj.signed_at or '-'},
             {'label': '负责人', 'value': obj.owner.username if obj.owner else ''},
