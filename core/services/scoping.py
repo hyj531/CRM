@@ -25,6 +25,17 @@ def get_region_scope_ids(user):
     return [user.region_id]
 
 
+def get_root_region_id(user):
+    if user is None or getattr(user, 'is_anonymous', True):
+        return None
+    region = getattr(user, 'region', None)
+    if not region:
+        return None
+    while region.parent_id:
+        region = region.parent
+    return region.id
+
+
 def apply_scope(queryset, user, region_field='region', owner_field='owner'):
     if user is None or user.is_anonymous:
         return queryset.none()
@@ -49,3 +60,24 @@ def apply_scope(queryset, user, region_field='region', owner_field='owner'):
     if not region_field:
         return queryset.none()
     return queryset.filter(**{f'{region_field}__in': region_ids})
+
+
+def apply_account_scope(queryset, user):
+    from django.db.models import Q
+
+    base_queryset = apply_scope(queryset, user, region_field='region', owner_field='owner')
+
+    if user is None or getattr(user, 'is_anonymous', True):
+        return base_queryset
+    if getattr(user, 'is_superuser', False):
+        return base_queryset
+    if role_access.get_effective_scope(user) == models.Role.SCOPE_ALL:
+        return base_queryset
+
+    root_region_id = get_root_region_id(user)
+    if not root_region_id:
+        return base_queryset
+
+    return queryset.filter(
+        Q(id__in=base_queryset.values('id')) | Q(region_id=root_region_id)
+    )

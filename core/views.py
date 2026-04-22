@@ -289,6 +289,10 @@ class AccountViewSet(RegionScopedViewSet):
     filterset_fields = ['status', 'customer_level', 'enterprise_nature', 'owner', 'region']
     search_fields = ['full_name', 'short_name', 'industry']
 
+    def get_queryset(self):
+        queryset = models.Account.objects.all()
+        return scoping.apply_account_scope(queryset, self.request.user)
+
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
 
